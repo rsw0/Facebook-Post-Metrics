@@ -1,0 +1,36 @@
+---
+title: "facebook"
+author: "575 C1 Team 3"
+date: "2020/9/13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+Loading the facebook data set and tidyverse library into R
+```{r, echo=FALSE}
+load("facebook.RData")
+suppressPackageStartupMessages(library("tidyverse"))
+```
+
+Discrete variable graphs
+
+```{r, echo=FALSE}
+ggplot(Data)+stat_summary(aes(Type, Total.Interactions), fun = mean, geom = 'bar')
+ggplot(Data)+stat_summary(aes(Type, Total.Interactions), fun = mean, fun.min = min, fun.max = max, geom = 'pointrange')
+```
+Even though videos have a higher mean number of total interactions, photos surpasses all other categories in term of maximum total interactions and standard deviation of total interactions. Could this indicate that photos have the potential to be more explosive, given that its content is carefully curated?
+
+```{r, echo=FALSE}
+ggplot(Data)+geom_point(aes(Post.Weekday, share, color = as.factor(Paid)), position = "jitter") + ylim(c(0,125))
+```
+I excluded 6 outlier above 125 shares to reduce data clustering. It can be seen that posts made on later days of the week tend to have more shares than that of earlier days. There doesn't seem to be a clear pattern on whether paid promotions increase post shares.
+
+```{r, echo=FALSE}
+ggplot(Data)+geom_smooth(mapping = aes(Lifetime.Engaged.Users, Page.total.likes))
+```
+The graphs seems to follow a parabolic behavior after x axis surpasses ~1500. Could this mean Facebook directs traffic to newer pages after a page passes an "Lifetime.Engaged.Users" threshold?
