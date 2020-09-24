@@ -11,6 +11,11 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ## R Markdown
 
+
+nihao
+
+
+
 Loading the facebook data set and tidyverse library into R
 ```{r, echo=FALSE}
 load("facebook.RData")
