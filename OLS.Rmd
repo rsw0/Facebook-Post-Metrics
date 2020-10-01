@@ -35,12 +35,10 @@ First, we identify outliers and remove them
 
 ```{r T_Interaction_Against_T_Impression}
 # clean outliers
-fb.clean <- fb %>% filter(T_Impression <= 12500, T_Interactions <= 400) 
+fb.clean <- fb %>% filter(T_Impression <= 30000)
 # calculate percentage of datapoints considered
-removedx <- fb %>% filter(T_Impression > 12500) %>% nrow()/nrow(fb)*100
-removedy <- fb %>% filter(T_Interactions > 400) %>% nrow()/nrow(fb)*100
 removedt <- (1 - nrow(fb.clean)/nrow(fb))*100
-percentage_tibble <- tribble(~Variable, ~Percentage_Removed, "T_Impression", removedx, "T_Interactions", removedy, "Overall", removedt)
+percentage_tibble <- tribble(~Variable, ~Percentage_Removed, "Overall", removedt)
 (percentage_tibble)
 ```
 
@@ -56,7 +54,7 @@ round(confint(m.ols,level=0.95),6)
 vcov(m.ols)
 ```
 
-As can be seen from the output, the fit is not quite good, with an adjusted R-square value of 0.3747. The slope seems to have a high t value and a low p value, indicating that T_Impression is a significant predictor. However, the relationship under the linear model is not a strong one. The confidence interval for the intercept is very wide, whereas the confidence interval on slope is very narrow. This outcome agrees with our previous analysis that the relationship between T_Impression and T_Interactions might not be linear. We will plot the OLS model below with residuals, and offer an alternative solution to fitting this data later in this document.
+As can be seen from the output, the fit is not quite good, with an adjusted R-square value of 0.1154. The intercept and slope seem to have a high t value and a low p value, indicating that T_Impression is a significant predictor. However, the relationship under the linear model is not a strong one. The confidence interval for the intercept is very wide, whereas the confidence interval on slope is very narrow. This outcome agrees with our previous analysis that the relationship between T_Impression and T_Interactions might not be linear. We will plot the OLS model below with residuals, and offer an alternative solution to fitting this data later in this document.
 
 ```{r OLS_plot}
 #plot OLS with predictions
@@ -74,7 +72,7 @@ m.log <- lm(L_T_Interactions ~ L_T_Impression, data = logfb)
 summary(m.log)
 ```
 
-This model is considerably better than the previous one, with very low p values for both parameters of interest. This output indicates that the both beta0 and beta1 are significant. Adjusted R-squared value is also high, at 0.4473, indicating that this fit is better compared to the linear fit. The graphs for the log-transformed variables are given below.
+This model is considerably better than the previous one, with very low p values for both parameters of interest. This output indicates that the both beta0 and beta1 are significant. Adjusted R-squared value is also high, at 0.3989, indicating that this fit is better compared to the linear fit. The graphs for the log-transformed variables are given below.
 
 ```{r LOG_plot}
 # plot log with predictions
