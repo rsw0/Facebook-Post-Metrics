@@ -1,0 +1,86 @@
+---
+title: "OLS"
+author: "575 C1 Team 3"
+date: "2020/10/1"
+output: word_document
+---
+
+Team Members
+Dingjie Chen, Siwen He, Hanzi Yu, Jiaqi Yin, Runsheng Wang
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+In this deliverable, we are performing OLS on the facebook dataset. We first load the packages needed to perform the analysis and read in the delimited file. We modified the column names of the CSV file so that column names would not contain space, as space is not a valid name character in ggplot. We used the complete.cases() function to handle NA values. Also note that "Category" and "Paid" variables are being interpreted as a double by the col_guess() function. To use these two variables as categorical, we could call the as.factor() function.
+
+```{r load, message = FALSE}
+#loading packages and dataset
+suppressPackageStartupMessages(library(tidyverse))
+suppressPackageStartupMessages(library(modelr))
+fb <- read_delim("dataset_Facebook.csv", delim = ";")
+fb <- fb[complete.cases(fb), ]
+```
+
+To identify potentially meaningful relationships, we construct a heatmap for T_Impression and T_Interactions. Since facebook does a horrible job at explaining their metrics, it makes sense for us to first define clearly what each variable is accounting for. After doing some research online, we found that Facebook calculates
+
+```{r heatmap}
+# construct heatmap
+fb %>% transmute(T_Impression = cut_number(T_Impression, 6), T_Interactions = cut_number(T_Interactions, 6)) %>% count(T_Impression, T_Interactions) %>% ggplot(aes(T_Impression, T_Interactions)) + geom_tile(aes(fill = n)) + scale_x_discrete(labels = abbreviate) + scale_fill_viridis_c()
+```
+
+On the heatmap, lighter colors correspond to higher number of posts that belongs to the bin with specific T_Impression and T_Interactions. We see that lighter colors are clustering along the diagonal of the heatmap, indicating a potentially positive correlation between the two variables. This heatmap motivate us to plot T_Interactions against T_Impression, as illustrated below.
+
+First, we identify outliers and remove them
+
+```{r T_Interaction_Against_T_Impression}
+# clean outliers
+fb.clean <- fb %>% filter(T_Impression <= 12500, T_Interactions <= 400) 
+# calculate percentage of datapoints considered
+removedx <- fb %>% filter(T_Impression > 12500) %>% nrow()/nrow(fb)*100
+removedy <- fb %>% filter(T_Interactions > 400) %>% nrow()/nrow(fb)*100
+removedt <- (1 - nrow(fb.clean)/nrow(fb))*100
+percentage_tibble <- tribble(~Variable, ~Percentage_Removed, "T_Impression", removedx, "T_Interactions", removedy, "Overall", removedt)
+(percentage_tibble)
+```
+
+Since social media posts have the potential to be explosive, the disparity in data between posts that performs well and posts that don't perform as well could be very high. Furthermore, the metrics becomes very unstable and uninformative as Total Impression grows large. Since we only have limited number of datapoints for large values of x and that these values have huge variations, we remove them for OLS. This choice is meaningful because we want to make conclusions for posts performances metrics that are more common rather than less common. The percentage of datapoints removed is displayed in the table above. It might seem that we over-removed data points, but there are simply not enough observations and too much variations for  T_Impression > 12500 and T_Interactions > 400 for us to make meaningful inferences.
+
+Now, we proceed to calculate OLS
+
+```{r OLS}
+# calculate OLS
+m.ols <- lm(T_Interactions ~ T_Impression, data = fb.clean)
+summary(m.ols)
+round(confint(m.ols,level=0.95),6)
+vcov(m.ols)
+```
+
+As can be seen from the output, the fit is not quite good, with an adjusted R-square value of 0.3747. The slope seems to have a high t value and a low p value, indicating that T_Impression is a significant predictor. However, the relationship under the linear model is not a strong one. The confidence interval for the intercept is very wide, whereas the confidence interval on slope is very narrow. This outcome agrees with our previous analysis that the relationship between T_Impression and T_Interactions might not be linear. We will plot the OLS model below with residuals, and offer an alternative solution to fitting this data later in this document.
+
+```{r OLS_plot}
+#plot OLS with predictions
+ggplot(fb.clean %>% add_predictions(m.ols), aes(T_Impression, T_Interactions)) + geom_point(size = 0.1) + geom_line(aes(y=pred), color = "blue")
+# plot residual
+ggplot(fb.clean %>% add_residuals(m.ols), aes(T_Impression, resid))+geom_hex(alpha = 0.7)+geom_hline(aes(yintercept = 0))+scale_fill_viridis_c()
+```
+
+As seen in the graphs above, the linear model doesn't fit the data quite well. The residual plot also indicate that we have the assumption of equal variances do not hold in this case, as residuals tend to be greater for higher values of T_Impression. The output of this plot and the visual trend of the scatterplot motivates us to do a log transformation on the variable
+
+```{r LOG}
+# log transform
+logfb <- fb.clean %>% transmute(L_T_Interactions = log(T_Interactions), L_T_Impression = log(T_Impression)) %>% filter(!is.infinite(L_T_Interactions))
+m.log <- lm(L_T_Interactions ~ L_T_Impression, data = logfb)
+summary(m.log)
+```
+
+This model is considerably better than the previous one, with very low p values for both parameters of interest. This output indicates that the both beta0 and beta1 are significant. Adjusted R-squared value is also high, at 0.4473, indicating that this fit is better compared to the linear fit. The graphs for the log-transformed variables are given below.
+
+```{r LOG_plot}
+# plot log with predictions
+ggplot(logfb %>% add_predictions(m.log), aes(L_T_Impression, L_T_Interactions)) + geom_point(size = 0.1) + geom_line(aes(y=pred), color = "blue")
+# plot residual
+ggplot(logfb %>% add_residuals(m.log), aes(L_T_Interactions, resid))+geom_hex(alpha = 0.7)+geom_hline(aes(yintercept = 0))+scale_fill_viridis_c()
+```
+
+Notice that the log plot follows a roughly linear trend, with residuals roughly clustering around the y=0 line. If log transformation yields a considerably good linear fit, the non-transformed data could exhibit an exponential relationship. We won't expand on this concept for this project deliverable, but it will be considered when we construct our final project. 

@@ -1,4 +1,4 @@
-Page total likes;Type;Category;Post Month;Post Weekday;Post Hour;Paid;Lifetime Post Total Reach;Lifetime Post Total Impressions;Lifetime Engaged Users;Lifetime Post Consumers;Lifetime Post Consumptions;Lifetime Post Impressions by people who have liked your Page;Lifetime Post reach by people who like your Page;Lifetime People who have liked your Page and engaged with your post;comment;like;share;Total Interactions
+Page_T_Likes;Type;Category;Month;Weekday;Hour;Paid;T_Reach;T_Impression;Engaged_Users;Comsumers;Consumption;LP_Impression;LP_Reach;LP_Engage_With_Post;comment;like;share;T_Interactions
 139441;Photo;2;12;4;3;0;2752;5091;178;109;159;3078;1640;119;4;79;17;100
 139441;Status;2;12;3;10;0;10460;19057;1457;1361;1674;11710;6112;1108;5;130;29;164
 139441;Photo;3;12;3;3;0;2413;4373;177;113;154;2812;1503;132;0;66;14;80
