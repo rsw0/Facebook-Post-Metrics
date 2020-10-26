@@ -9,10 +9,30 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## R Markdown
+## Notes on potential points of analysis
+
+frequency of posts
+intervals between explosive posts, define explosive
+anything that would help a brand builds more cost-effective marketing campaign
+common characteristics in popular posts
+posts regarding holidays and big events
+
+think of factors, logically
 
 
-nihao
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
