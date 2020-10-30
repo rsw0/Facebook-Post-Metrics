@@ -26,16 +26,16 @@ bike <- bike[complete.cases(bike), ]
 
 ```{r heatmap}
 # temp heatmap
-bike %>% transmute(temp = cut_number(temp, 8), cnt = cut_number(cnt, 8)) %>% count(temp, cnt) %>% ggplot(aes(temp, cnt)) + geom_tile(aes(fill = n)) + scale_x_discrete(labels = abbreviate) + scale_fill_viridis_c()
+bike %>% transmute(temp = cut_number(temp, 7), cnt = cut_number(cnt, 7)) %>% count(temp, cnt) %>% ggplot(aes(temp, cnt)) + geom_tile(aes(fill = n)) + scale_x_discrete(labels = abbreviate) + scale_fill_viridis_c()
 
 # hum heatmap
-bike %>% transmute(hum = cut_number(hum, 8), cnt = cut_number(cnt, 8)) %>% count(hum, cnt) %>% ggplot(aes(hum, cnt)) + geom_tile(aes(fill = n)) + scale_x_discrete(labels = abbreviate) + scale_fill_viridis_c()
+bike %>% transmute(hum = cut_number(hum, 7), cnt = cut_number(cnt, 7)) %>% count(hum, cnt) %>% ggplot(aes(hum, cnt)) + geom_tile(aes(fill = n)) + scale_x_discrete(labels = abbreviate) + scale_fill_viridis_c()
 
 # windspeed heatmap
-bike %>% transmute(windspeed = cut_number(windspeed, 8), cnt = cut_number(cnt, 8)) %>% count(windspeed, cnt) %>% ggplot(aes(windspeed, cnt)) + geom_tile(aes(fill = n)) + scale_x_discrete(labels = abbreviate) + scale_fill_viridis_c()
+bike %>% transmute(windspeed = cut_number(windspeed, 7), cnt = cut_number(cnt, 7)) %>% count(windspeed, cnt) %>% ggplot(aes(windspeed, cnt)) + geom_tile(aes(fill = n)) + scale_x_discrete(labels = abbreviate) + scale_fill_viridis_c()
 
 # atemp heatmap
-bike %>% transmute(atemp = cut_number(atemp, 8), cnt = cut_number(cnt, 8)) %>% count(atemp, cnt) %>% ggplot(aes(atemp, cnt)) + geom_tile(aes(fill = n)) + scale_x_discrete(labels = abbreviate) + scale_fill_viridis_c()
+bike %>% transmute(atemp = cut_number(atemp, 7), cnt = cut_number(cnt, 7)) %>% count(atemp, cnt) %>% ggplot(aes(atemp, cnt)) + geom_tile(aes(fill = n)) + scale_x_discrete(labels = abbreviate) + scale_fill_viridis_c()
 
 # season plot
 bike %>% ggplot(aes(as.factor(season), cnt)) + geom_violin() + scale_x_discrete(labels = abbreviate)

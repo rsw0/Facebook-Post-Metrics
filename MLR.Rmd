@@ -3,6 +3,8 @@ title: "Multiple Linear Regression"
 author: "575 C1 Team 3"
 date: "2020/10/26"
 output:
+  html_document:
+    df_print: paged
   word_document: default
 ---
 
@@ -38,7 +40,7 @@ Using T_Interactions as the response variable, we construct heatmaps for our pot
 Intuitively, we picked the following covariates to construct heatmaps:
 T_Reach, T_Impression, Engaged_Users, Consumers, Consumption, Category, Paid
 
-Since T_Interactions includes like, comment, and shares, some metrics such as "LP_Engage_With_Post" does not provide useful predictions for our response variable because they are composed of element in T_Interactions. In other words, they are simply a function of T_Interactions.
+Since T_Interactions includes like, comment, and shares, some metrics such as "LP_Engage_With_Post" does not provide useful predictions for our response variable because they are composed of element from T_Interactions. Other variables such as "Comment" is simply a component of T_Interactions. Thus, we don't consider these either. In other words, these variables are simply a function of T_Interactions.
 
 ```{r heatmap}
 # T_Reach heatmap
@@ -57,13 +59,13 @@ fb %>% transmute(Consumers = cut_number(Consumers, 8), T_Interactions = cut_numb
 fb %>% transmute(Consumption = cut_number(Consumption, 8), T_Interactions = cut_number(T_Interactions, 8)) %>% count(Consumption, T_Interactions) %>% ggplot(aes(Consumption, T_Interactions)) + geom_tile(aes(fill = n)) + scale_x_discrete(labels = abbreviate) + scale_fill_viridis_c()
 
 # Category plot
-fb %>% ggplot(aes(as.factor(Category), T_Interactions)) + geom_violin() + scale_x_discrete(labels = abbreviate)
+fb %>% ggplot(aes(as.factor(Category), T_Interactions)) + geom_violin() + scale_x_discrete(labels = abbreviate) + xlab("Category")
 
 # Paid plot
-fb %>% ggplot(aes(as.factor(Paid), T_Interactions)) + geom_violin() + scale_x_discrete(labels = abbreviate)
+fb %>% ggplot(aes(as.factor(Paid), T_Interactions)) + geom_violin() + scale_x_discrete(labels = abbreviate) + xlab("Paid")
 ```
 
-On the heatmaps, lighter colors correspond to higher number of posts that belongs to the bin with specific predictor variables and T_Interactions. If lighter colors are clustering along the diagonal of the heatmap, then there is potentially a correlation between the two variables. The heatmap for T_Reach, T_Impression, Engaged_Users, and Consumption all show such property. Therefore, they should be considered as covariates. On the other hand, the heatmap for Consumers does not seem to exhibit an obvious linear trend. It should be noted that Consumers and Consumption are very similar metrics. Thus, including both variables might not improve our prediction by a lot. Including more covariates also comes at the cost of less degrees of freedom and potentially lower Adjusted R-Square values. Thus, we remove Consumers from the covariates. Category and Paid are not continuous variables, so we don't construct a heatmap for them. Instead, we make a violin plot to see the differences. T_Impression doesn't seem to differ much for difference Category and for Paid vs Unpaid posts. However, the tails on each violin plots are very long. We keep these variables for now until scatter matrix.
+On the heatmaps, lighter colors correspond to higher number of posts that belongs to the bin with specific predictor variables and T_Interactions. If lighter colors are clustering along the diagonal of the heatmap, then there is potentially a correlation between the two variables. The heatmap for T_Reach, T_Impression, Engaged_Users, and Consumption all show such property. Therefore, they should be considered as covariates. On the other hand, the heatmap for Consumers does not seem to exhibit an obvious linear trend. It should be noted that Consumers and Consumption are very similar metrics. Thus, including both variables might not improve our prediction by a lot. Including more covariates also comes at the cost of less degrees of freedom and potentially lower Adjusted R-Square values. Thus, we remove Consumers from the covariates. Category and Paid are not continuous variables, so we don't construct a heatmap for them. Instead, we make a violin plot to see the density of their distribution. T_Impression doesn't seem to differ much for difference Category and for Paid vs Unpaid posts. However, the tails on each violin plots are very long. We keep these variables for now until scatter matrix.
 
 ## Removing Outliers
 Before proceeding with our analysis, we need to first remove outliers from our data
@@ -94,7 +96,7 @@ Now, we proceed to calculate MLS
 
 ```{r cov}
 # scatter matrix
-fb.clean %>% select(T_Interactions, T_Reach, T_Impression, Engaged_Users, Consumption, Category, Paid) %>% ggpairs(lower = list(continuous = wrap("points", alpha = 0.3, size=0.1)))
+fb.clean %>% select(T_Interactions, T_Reach, T_Impression, Engaged_Users, Consumption, Category, Paid) %>% ggpairs(lower = list(continuous = wrap("points", alpha = 0.3, size=0.1)), upper = list(continuous = wrap("cor", size = 3))) + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1), strip.placement = "outside", text = element_text(size = 7))
 ```
 From the scatter matrix, we noticed that there are two pairs of variable who have a very high correlation between them. Namely, T_Reach and T_Impression has a correlation factor of 0.869; Engaged_Users and Consumption has a correlation factor of 0.883. These can also be seen from the linear trend that's present in the scatter plots for these two pairs of variable. Based on the scatter matrix, we decided to remove one variable from each pair of strongly correlated variable. We choose to remove the one that has a lower correlation to our response variable T_Interactions. Since T_Reach and Engaged_Users have a higher correlation to T_Impression in each respective pairs, we remove T_Impression and Consumption from the MLR. Notice that Paid is a categorical variable that could affect the intercept. However, it's correlation is extremely low. Thus, we remove Paid as well. We choose to keep Category because it has a significant correlation with T_Interactions (from the *** next to the correlation coefficient). Our model would be better after removing these variable because they do not provide much extra information, and we would suffer from losing degrees of freedom as well as a potential for lower R-Square values.
 
