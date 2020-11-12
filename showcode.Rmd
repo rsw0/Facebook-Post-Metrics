@@ -9,7 +9,7 @@ output: word_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-```{r load, echo=FALSE, message=FALSE}
+```{r load, message=FALSE}
 # loading packages
 suppressPackageStartupMessages(library(tidyverse))
 suppressPackageStartupMessages(library(modelr))
@@ -29,7 +29,7 @@ theme_update(plot.title = element_text(hjust = 0.5))
 ## Model choice and Heatmap
 In previous labs, the results from OLS and QLS show that lower order least squares does not produce optimal regression fits. Considering that multiple variables could potentially affect Lifetime Post Consumers, multiple least square would be a more appropriate approach. The 7 input features are determined by the process of data collection and the nature of the Facebook dataset. Thus, Page Total Likes, Type, Category, Month, Weekday, Hour, and Paid are used as covariates. The only continuous variable among the covariates is Page Total Likes. The heatmap below does confirm the existence of a correlation with between Page Total Likes and Lifetime Post Consumers. 
 
-```{r heatmap, echo=FALSE}
+```{r heatmap}
 # T_Reach heatmap
 fb %>% transmute(Page_T_Likes = cut_number(Page_T_Likes, 6), Consumers = cut_number(Consumers, 6)) %>% count(Page_T_Likes, Consumers) %>% ggplot(aes(Page_T_Likes, Consumers)) + geom_tile(aes(fill = n)) + scale_x_discrete(labels = abbreviate) + scale_fill_viridis_c()
 ```
@@ -37,7 +37,7 @@ fb %>% transmute(Page_T_Likes = cut_number(Page_T_Likes, 6), Consumers = cut_num
 ## Outliers
 Before proceeding with analysis, the issue of outliers need to be addressed. For the continuous variable Page Total Likes, the calculated percentage of datapoints that lie outside of 3 standard deviations from the mean is 0, meaning that all datapoints are non-outliers.
 
-```{r outlier, echo=FALSE}
+```{r outlier}
 # computer mean and sd
 like_mean = mean(fb$Page_T_Likes)
 like_sd = sd(fb$Page_T_Likes)
@@ -54,14 +54,14 @@ percentage_tibble <- tribble(~Variable, ~Percentage_Outside_3_SD, "Page Total Li
 ## Scatter Plots and Covariance Matrices
 Notice that variables Month and Hour can only take on discrete values, and should therefore be treated as factors. However, treating them as factors triggers a cardinality threshold error in R as Hour's factor level exceed 15. This error can be fixed by specifying the threshold, but drawing 12 or 24 boxplots are not visually significant at all due to extreme clustering and very slow processing time. Thus, it will be treated as a continuous value for both the matrix plots and the regression analysis. They will be interpreted as factors when making a conclusion.
 
-```{r cov, echo=FALSE, message=FALSE}
+```{r cov, message=FALSE}
 # scatter matrix
 fb.clean %>% select(Page_T_Likes, Type, Category, Month, Weekday, Hour, Paid, Consumers) %>% ggpairs(lower = list(continuous = wrap("points", alpha = 0.3, size=0.1)), upper = list(continuous = wrap("cor", size = 3))) + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1), strip.placement = "outside", text = element_text(size = 7))
 ```
 Page Total Like is indeed a significant predictor, noted by the 3 asterisks top the right of -0.148. Categorical variables do not have a correlation index with the response variable because the response variable is being distributed into different bins. To compare those values for significance, ANOVA should be used. Based on the scatterplot matrix and multiple experiments on various combinations of predictors, the best MLS outcome that has the most significant p values and the highest R-Square value seems to be the model with Page Total Like, Type, and Paid as predictors. The summary of the model is illustrated below. 
 
 ## Performing MLS
-```{r MLS, echo=FALSE}
+```{r MLS}
 m.mls <- lm(Consumers ~ Page_T_Likes + Type + Paid - 1, data = fb.clean)
 summary(m.mls)
 ```
@@ -72,7 +72,7 @@ Notice that Category, Month, Weekday, and Hour were not included as part of the 
 
 ## 3D Graph for MLS output
 In order to create visualization for 3 predictors, a 3D graph is illustrated below from two different angles.
-```{r 3D, echo=FALSE, eval=FALSE}
+```{r 3D, eval=FALSE}
 # 3D :)
 fb.clean <- fb.clean %>% add_predictions(m.mls)
 fb.clean %>% plot_ly(x = ~Page_T_Likes, y = ~Type, z = ~pred, color = ~as.factor(Paid), colors = c('#BF382A', '#0C4B8E')) %>% add_markers(size = 5)
@@ -81,7 +81,7 @@ fb.clean %>% plot_ly(x = ~Page_T_Likes, y = ~Type, z = ~pred, color = ~as.factor
 ## Diagnostic Analysis
 The prior analysis does not suggest for transformations of variables, therefore it would be useful to analyze the validity of the MLS. Construct residual plot and qq plot. There exist one datapoint with residual > 11000, whereas all other datapoints have a residual < 6000. The gap on the residual plot makes visual interpretation extremely difficult due to clustering. Thus, remove that outlier for now when inferring about trends in the residual plot.
 
-```{r residual6000, echo=FALSE}
+```{r residual6000}
 # first build residual from quadratic model to compare against mls
 m.qls1 <- fb.clean %>% filter(Consumers <= 6000) %>% lm(Consumers ~ Page_T_Likes + I(Page_T_Likes^2), .)
 StanResQLS1 <- rstandard(m.qls1)
@@ -111,7 +111,7 @@ The fitted model has a very nice-looking residual plot for MLS when compared to 
 
 To further analyze the model, construct the qq plot and histogram to check for distribution.
 
-```{r qqhisto, echo=FALSE}
+```{r qqhisto}
 p <- ggplot(data.frame(StanResMLS1), aes(sample = StanResMLS1)) +
 ggtitle("QQ MLS Plot")
 p + stat_qq() + stat_qq_line()
@@ -127,7 +127,7 @@ The qq plot does not align quite well with the line representing the standard no
 
 Previously, the MLS was generated based on all datapoints. In order to perform training and validation, randomly select half of the dataset to perform training. Previous analysis suggests the use of a subset of the input features. The same outlier from previous residual analysis was removed from the graph (not from the calculation).
 
-```{r training, echo=FALSE}
+```{r training}
 # random sample and training
 fb.random = fb.clean[sample(nrow(fb.clean)),]
 fb.train <- fb.random[1:248,]
@@ -136,7 +136,7 @@ m.mls_train <- lm(Consumers ~ Page_T_Likes + Type + Paid - 1, data = fb.train)
 ResMLS_train <- resid(m.mls_train)
 ```
 
-```{r validation, echo=FALSE}
+```{r validation}
 # residual for validation
 output <- predict(m.mls_train, se.fit = TRUE, newdata=data.frame(Page_T_Likes=fb.validation$Page_T_Likes, Type=fb.validation$Type, Paid=fb.validation$Paid))
 ResMLSValidation <- fb.validation$Consumers - output$fit
