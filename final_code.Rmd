@@ -2,14 +2,18 @@
 title: "final_code"
 author: "575 C1 Team 3"
 date: "2020/11/11"
-output: word_document
+output:
+  word_document: default
+  html_document:
+    df_print: paged
+  pdf_document: default
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-```{r load, echo=FALSE, message=FALSE}
+```{r load, message=FALSE}
 # loading packages
 suppressPackageStartupMessages(library(tidyverse))
 suppressPackageStartupMessages(library(modelr))
@@ -17,27 +21,25 @@ suppressPackageStartupMessages(library(hrbrthemes))
 suppressPackageStartupMessages(library(GGally))
 suppressPackageStartupMessages(library(gridExtra))
 suppressPackageStartupMessages(library(plotly))
-
+suppressPackageStartupMessages(library(sjPlot))
+suppressPackageStartupMessages(library(kableExtra))
 # loading datasets
 fb <- read_delim("dataset_Facebook.csv", delim = ";")
-fb <- fb[complete.cases(fb), ] %>% mutate(Category = as.factor(Category), Weekday = as.factor(Weekday), Paid = as.factor(Paid))
+fb <- fb[complete.cases(fb), ] %>% mutate(Category = as.factor(Category), Paid = as.factor(Paid))
 
 # center titles for ggplot
 theme_update(plot.title = element_text(hjust = 0.5))
 ```
 
-## Model choice and Heatmap
-In previous labs, the results from OLS and QLS show that lower order least squares does not produce optimal regression fits. Considering that multiple variables could potentially affect Lifetime Post Consumers, multiple least square would be a more appropriate approach. The 7 input features are determined by the process of data collection and the nature of the Facebook dataset. Thus, Page Total Likes, Type, Category, Month, Weekday, Hour, and Paid are used as covariates. The only continuous variable among the covariates is Page Total Likes. The heatmap below does confirm the existence of a correlation with between Page Total Likes and Lifetime Post Consumers. 
-
-```{r heatmap, echo=FALSE}
-# T_Reach heatmap
+```{r heatmap}
+# Page_T_Likes heatmap
+png("heatmap.png", width = 6, height = 4, units = 'in', res = 300)
 fb %>% transmute(Page_T_Likes = cut_number(Page_T_Likes, 6), Consumers = cut_number(Consumers, 6)) %>% count(Page_T_Likes, Consumers) %>% ggplot(aes(Page_T_Likes, Consumers)) + geom_tile(aes(fill = n)) + scale_x_discrete(labels = abbreviate) + scale_fill_viridis_c()
+dev.off()
+
 ```
 
-## Outliers
-Before proceeding with analysis, the issue of outliers need to be addressed. For the continuous variable Page Total Likes, the calculated percentage of datapoints that lie outside of 3 standard deviations from the mean is 0, meaning that all datapoints are non-outliers.
-
-```{r outlier, echo=FALSE}
+```{r outlier}
 # computer mean and sd
 like_mean = mean(fb$Page_T_Likes)
 like_sd = sd(fb$Page_T_Likes)
@@ -51,37 +53,54 @@ percentage_tibble <- tribble(~Variable, ~Percentage_Outside_3_SD, "Page Total Li
 (percentage_tibble)
 ```
 
-## Scatter Plots and Covariance Matrices
-Notice that variables Month and Hour can only take on discrete values, and should therefore be treated as factors. However, treating them as factors triggers a cardinality threshold error in R as Hour's factor level exceed 15. This error can be fixed by specifying the threshold, but drawing 12 or 24 boxplots are not visually significant at all due to extreme clustering and very slow processing time. Thus, it will be treated as a continuous value for both the matrix plots and the regression analysis. They will be interpreted as factors when making a conclusion.
+```{r boxplots}
+png("vio_type.png", width = 6, height = 4, units = 'in', res = 300)
+fb.clean %>% ggplot(aes(factor(Type), Consumers)) + geom_violin()
+dev.off()
 
-```{r cov, echo=FALSE, message=FALSE}
+png("vio_cate.png", width = 6, height = 4, units = 'in', res = 300)
+fb.clean %>% ggplot(aes(factor(Category), Consumers)) + geom_violin()
+dev.off()
+
+png("vio_mont.png", width = 6, height = 4, units = 'in', res = 300)
+fb.clean %>% ggplot(aes(factor(Month), Consumers)) + geom_violin()
+dev.off()
+
+png("vio_week.png", width = 6, height = 4, units = 'in', res = 300)
+fb.clean %>% ggplot(aes(factor(Weekday), Consumers)) + geom_violin()
+dev.off()
+
+png("vio_hour.png", width = 6, height = 4, units = 'in', res = 300)
+fb.clean %>% ggplot(aes(factor(Hour), Consumers)) + geom_violin()
+dev.off()
+
+png("vio_paid.png", width = 6, height = 4, units = 'in', res = 300)
+fb.clean %>% ggplot(aes(factor(Paid), Consumers)) + geom_violin()
+dev.off()
+```
+
+```{r cov, message=FALSE}
 # scatter matrix
-fb.clean %>% select(Page_T_Likes, Type, Category, Month, Weekday, Hour, Paid, Consumers) %>% ggpairs(lower = list(continuous = wrap("points", alpha = 0.3, size=0.1)), upper = list(continuous = wrap("cor", size = 3))) + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1), strip.placement = "outside", text = element_text(size = 7))
+png("matrix.png", width = 6, height = 4, units = 'in', res = 300)
+fb.clean %>% select(Page_T_Likes, Type, Category, Month, Weekday, Hour, Paid, Consumers) %>% transmute(Page_Likes = Page_T_Likes, Type, Category, Month, Weekday, Hour, Paid, Consumers) %>% ggpairs(lower = list(continuous = wrap("points", alpha = 0.3, size=0.1, label = abbreviate)), upper = list(continuous = wrap("cor", size = 2))) + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1), strip.placement = "outside", text = element_text(size = 6))
+dev.off()
 ```
-Page Total Like is indeed a significant predictor, noted by the 3 asterisks top the right of -0.148. Categorical variables do not have a correlation index with the response variable because the response variable is being distributed into different bins. To compare those values for significance, ANOVA should be used. Based on the scatterplot matrix and multiple experiments on various combinations of predictors, the best MLS outcome that has the most significant p values and the highest R-Square value seems to be the model with Page Total Like, Type, and Paid as predictors. The summary of the model is illustrated below. 
 
-## Performing MLS
-```{r MLS, echo=FALSE}
+```{r MLS}
 m.mls <- lm(Consumers ~ Page_T_Likes + Type + Paid - 1, data = fb.clean)
-summary(m.mls)
 ```
 
-Based on the output of MLS, the model predicts the data moderately well with Adjusted R-Squared of 0.5922. It is not a high value, but there are high significance on all coefficients and the trend is clear. In this model, all p values are significant at a confidence level that's greater than 99.9%, except for Paid1 which is significant at 99.9% confidence level. The estimated value for Page Total Likes is -1.398e-02, which means that for each unit of likes a page gets, the Lifetime Post Consumers variable decreases by 1.398e-02. Rejecting null for Page_T_Likes mean that Page Total Like is indeed a significant predictor for Lifetime Post Consumers. The null hypothesis on all four levels of the "Type" variable can be rejected, meaning that all types have a significant impact on the intercept of the prediction for Lifetime Post Consumers. Regression with each factor level in "Type" as baseline were also performed. All of them show that the mean of each level is different than that of all other levels. The paid posts also differs significantly with the unpaid posts, where the paid posts have a higher intercept at 2.067e+02. The F statistics tests for whether all the regression coefficients are equal to zero. In this model, the p value for the F statistics is extremely small at  p < 2.2e-16. It can be concluded confidently that not all coefficients are equal to zero.
+```{r MLStable, eval=FALSE}
+tab_model(m.mls, show.se = TRUE, show.std = TRUE, show.stat = TRUE)
+```
 
-Notice that Category, Month, Weekday, and Hour were not included as part of the regression covariates due to insignificance of coefficients and low R-Square values that emerged when we were experimenting with different combinations of predictors. This outcome is indeed consistent with the correlation matrices. However, Month, Weekday, and Hour are time data that can be analyzed separately. The analysis will be carried out later in the report.
-
-## 3D Graph for MLS output
-In order to create visualization for 3 predictors, a 3D graph is illustrated below from two different angles.
-```{r 3D, echo=FALSE, eval=FALSE}
+```{r 3D, eval=FALSE}
 # 3D :)
 fb.clean <- fb.clean %>% add_predictions(m.mls)
 fb.clean %>% plot_ly(x = ~Page_T_Likes, y = ~Type, z = ~pred, color = ~as.factor(Paid), colors = c('#BF382A', '#0C4B8E')) %>% add_markers(size = 5)
 ```
 
-## Diagnostic Analysis
-The prior analysis does not suggest for transformations of variables, therefore it would be useful to analyze the validity of the MLS. Construct residual plot and qq plot. There exist one datapoint with residual > 11000, whereas all other datapoints have a residual < 6000. The gap on the residual plot makes visual interpretation extremely difficult due to clustering. Thus, remove that outlier for now when inferring about trends in the residual plot.
-
-```{r residual6000, echo=FALSE}
+```{r residual6000}
 # first build residual from quadratic model to compare against mls
 m.qls1 <- fb.clean %>% filter(Consumers <= 6000) %>% lm(Consumers ~ Page_T_Likes + I(Page_T_Likes^2), .)
 StanResQLS1 <- rstandard(m.qls1)
@@ -89,45 +108,43 @@ StanResQLS1 <- rstandard(m.qls1)
 # standardize for mls and plotting
 m.mls1 <- fb.clean %>% filter(Consumers <= 6000) %>% lm(Consumers ~ Page_T_Likes + Type + Paid, .)
 StanResMLS1 <- rstandard(m.mls1)
+png("stdres.png", width = 6, height = 4, units = 'in', res = 300)
 fb.clean %>% filter(Consumers <= 6000) %>% ggplot() + geom_point(aes(Consumers, StanResQLS1, color = "Quadratic"), size = 0.1) + geom_point(aes(Consumers, StanResMLS1, color = "MLS"), size = 0.1) +
 geom_hline(yintercept=2,color='blue') + geom_hline(yintercept=-2, color='blue') +
 scale_color_manual(name = element_blank(), labels = c("MLS","Quadratic"), values = c("red","blue")) +
 labs(y = "Standarized Residual") + ggtitle("Standarized Residuals Plot")
+dev.off()
 
 # fitted residuals
 qfit1 = fitted(m.qls1)
 mfit1 = fitted(m.mls1)
 
+png("fitres.png", width = 6, height = 4, units = 'in', res = 300)
 fb.clean %>% filter(Consumers <= 6000) %>% ggplot() + geom_point(aes(qfit1, StanResQLS1, color = "Quadratic"), size = 0.1) + geom_point(aes(mfit1, StanResMLS1, color = "MLS"), size = 0.1) +
 geom_hline(yintercept=2,color='blue') + geom_hline(yintercept=-2, color='blue') +
 scale_color_manual(name = element_blank(), labels = c("MLS","Quadratic"), values = c("red","blue")) +
 labs(y = "Standarized Residual") + labs(x = "Fitted value") +
 ggtitle("Standarized Residuals Plot (Fitted) ")
+dev.off()
 ```
 
-On the standardized residual plot, there is a positive linear trend in both the MLS and the quadratic model, indicating that the model tend to consistently overestimate actual values as Consumers increases beyond the standard residual = 0 line. There is no good predictions for larger values of Consumers, partly because there are a lot less datapoints to generate the model from. The majority of the residual lie roughly within the horizontal band, but it clearly exhibit a non-horizontal trend. Even though residuals in both models exhibit linearity, MLS model is actually better than the quadratic model. This is because the linear trend is more scattered compared to the very concentrated line in the quadratic form. MLS residuals distributes itself almost evenly on both sides of the quadratic residuals. 
-
-The fitted model has a very nice-looking residual plot for MLS when compared to QLS. The MLS model does not exhibit any linear trend, and it is mostly distributed within the horizontal bands. There is a potential for a unequal variance, or conical trend, because variances for larger fitted values seem to be a lot more spread apart than the concentrated residuals around fitted value = 500. Based on the residual plots, the use of a constant noise model is not justified because the residual potentially violates some assumptions about the model.
-
-To further analyze the model, construct the qq plot and histogram to check for distribution.
-
-```{r qqhisto, echo=FALSE}
+```{r qqhisto}
+png("qq.png", width = 6, height = 4, units = 'in', res = 300)
 p <- ggplot(data.frame(StanResMLS1), aes(sample = StanResMLS1)) +
 ggtitle("QQ MLS Plot")
-p + stat_qq() + stat_qq_line()
-ggplot(data = data.frame(StanResMLS1), aes(x = StanResMLS1)) + geom_histogram(bins = 30) +
-ggtitle("Histogram MLS Plot 30 bin")
-ggplot(data = data.frame(StanResMLS1), aes(x = StanResMLS1)) + geom_histogram(bins = 60) +
-ggtitle("Histogram MLS Plot 60 bin")
+p + stat_qq(size = 0.5) + stat_qq_line()
+dev.off()
+
+png("his30.png", width = 6, height = 4, units = 'in', res = 300)
+ggplot(data = data.frame(StanResMLS1), aes(x = StanResMLS1)) + geom_histogram(bins = 30) + labs(x = "Standardized Residuals") + ggtitle("Histogram MLS Plot 30 bin")
+dev.off()
+
+png("his60.png", width = 6, height = 4, units = 'in', res = 300)
+ggplot(data = data.frame(StanResMLS1), aes(x = StanResMLS1)) + geom_histogram(bins = 60) + labs(x = "Standardized Residuals") + ggtitle("Histogram MLS Plot 60 bin")
+dev.off()
 ```
 
-The qq plot does not align quite well with the line representing the standard normal distribution. There appears to be skewness on both tails of the plot, with the upper tail having a more extreme skew. The histogram indeed confirmed that the distribution is rightward skewed. The heavy tails on the qq plot also indicate that the data have more extreme values than would be expected if they truly came from a normal distribution. Under the 30 bin histogram, it appears that a significant amount of residuals fall into the residual = 0 bin. However, the rightward skewness becomes more and more obvious as bin numbers increase. Comparing the two histograms above, it seems that the mode occurs at a residual value (call it k) that's smaller than 0, and high frequency residuals seems to cluster around this negative k value.
-
-## Training and Validation
-
-Previously, the MLS was generated based on all datapoints. In order to perform training and validation, randomly select half of the dataset to perform training. Previous analysis suggests the use of a subset of the input features. The same outlier from previous residual analysis was removed from the graph (not from the calculation).
-
-```{r training, echo=FALSE}
+```{r training}
 # random sample and training
 fb.random = fb.clean[sample(nrow(fb.clean)),]
 fb.train <- fb.random[1:248,]
@@ -136,22 +153,23 @@ m.mls_train <- lm(Consumers ~ Page_T_Likes + Type + Paid - 1, data = fb.train)
 ResMLS_train <- resid(m.mls_train)
 ```
 
-```{r validation, echo=FALSE}
+```{r validation}
 # residual for validation
 output <- predict(m.mls_train, se.fit = TRUE, newdata=data.frame(Page_T_Likes=fb.validation$Page_T_Likes, Type=fb.validation$Type, Paid=fb.validation$Paid))
 ResMLSValidation <- fb.validation$Consumers - output$fit
 
-# MSE
+# MSE of data
 mean(fb.validation$Consumers)
-mean((ResMLS_train)^2)
-mean((ResMLSValidation)^2)
-
-# relative MSE
-mean((ResMLSValidation)^2) / mean((fb.validation$Consumers)^2)
 
 # Remove outliers
 ResMLS_tn <- ResMLS_train[ResMLS_train<max(ResMLS_train)]
 mean((ResMLS_tn)^2)
+
+# MSE
+mean((ResMLSValidation)^2)
+
+# relative MSE
+mean((ResMLSValidation)^2) / mean((fb.validation$Consumers)^2)
 
 # RMSE
 sqrt(mean((ResMLS_tn)^2))
@@ -164,57 +182,31 @@ colnames(test)[2] = "Prediction"
 colnames(test)[3] = "Index"
 
 # Consumers vs Prediction for validation dataset
+png("validation_line.png", width = 6, height = 4, units = 'in', res = 300)
 test %>% filter(Consumers <= 6000) %>% ggplot(aes(x = Consumers, y = Prediction)) + geom_point() + geom_abline(intercept = 0, slope = 1) + ggtitle("Validation Consumers vs Prediction")
+dev.off()
 
 # further analysis
+png("tv_line.png", width = 6, height = 4, units = 'in', res = 300)
 ggplot(data = test, aes(x = Index)) + geom_line(aes(y = Consumers, color = "Consumers")) + geom_line(aes(y = Prediction, color="Prediction"), linetype="twodash") + scale_color_manual(name = element_blank(), labels = c("Consumers","Prediction"), values = c("darkred", "steelblue")) + labs(y = "") + ggtitle("Validation")
+dev.off()
 
 # zoom
+png("tv_line_zoom.png", width = 6, height = 4, units = 'in', res = 300)
 test2 = test[60:120,]
 ggplot(data = test2, aes(x = Index)) + geom_line(aes(y = Consumers, color = "Consumers")) + geom_line(aes(y = Prediction, color="Prediction"), linetype="twodash") + scale_color_manual(name = element_blank(), labels = c("Consumers","Prediction"), values = c("darkred", "steelblue")) + labs(y = "") +ggtitle("Validation Zoom")
+dev.off()
 ```
 
-## Predictions
-Plotting the actual data against the prediction reveals that the model predicts the trend (or relative change) of Lifetime Post Consumers quite well, but it does not generate good results for individual predictions. The original and zoomed-in versions of the Consumers vs Prediction on the validation dataset is presented. As seen from the zoomed in version, the two curves roughly follow the same trends with corresponding peaks and troughs. However, the exact values at those peaks and troughs seem to be more extreme than the one predicted by the training model. For instance, at approximately index = 89 and index = 97, the peak number for consumer in the actual data is a lot higher than the one predicted. The predicted value is also a peak relative to its immediate neighbors, but it doesn't predict such extreme values as observed in the validation dataset. There is a significant difference between MSE training before and after the outlier removal (761565.3 vs 360745.4). The two MSE are relatively close to each other, with their difference being one magnitude smaller than the values themselves. 
-
-
-The fact that the training model does not predict validation well is also illustrated by the RMSE value. Since the mean in the validation dataset is 793.1822, RMSE value of 641.2707 is a 80% variation. This does not necessarily mean that the model is useless at predicting the validation dataset. This value is high primarily because the training dataset has an innate RMSE of 600.6209. Testing variations only added 6.83% of variations from the training dataset. Due to frequent occurrances of extreme outliers, the line fit of Validation Consumers vs Prediction is not good, which is expected because the training set predicts the trend well but not the actual values. Rare observations beyond 3000 and the few observations between 2000 and 3000 are heavily affecting our predictions on the actual values.
-
-To extrapolate more useful results,it could be justified to use a subset of data by filtering out higher consumers values. This would be meaningful in drawing a conclusion on posts with smaller number of Lifetime Consumer Posts. This is useful in real-life because most posts don't have extreme values, as can be seen from the potential outliers in the facebook dataset. Overall, the trend of the model roughly aligns with validation set, but exact value approximations are a lot less accurate.
-
-
-
-## Further Analysis
-
-
-
-
-
-
-
-
-
-
-do ANOVA on the categorical predictors, or just include it as part of the next section? Search R ANOVA
-
-```{r type_int, eval=FALSE, echo=FALSE}
-# interaction by post type
-ggplot(Data)+stat_summary(aes(Type, Total.Interactions), fun = mean, geom = 'bar')
-ggplot(Data)+stat_summary(aes(Type, Total.Interactions), fun = mean, fun.min = min, fun.max = max, geom = 'pointrange')
+```{r MSEprocess, eval=FALSE}
+# the data below were obtained and recorded directly from code output in the previous step
+Trial_ID <- c("1", "2", "3", "4", "5", "6", "7", "Overall Mean")
+Validation_Response_Mean = c(809.6721, 779.7206, 784.5263, 767.0567, 784.3522, 796.4777, 748.834, 781.5199)
+MSE_Training <- c(273935.7, 398845.9, 360237.5, 454073.8, 383966.2, 370935.7, 375185, 373882.8)
+MSE_Validation <- c(495420.7, 420692.1, 776658.9, 307866.7, 368122.6, 755248.4, 384575.2, 501226.4)
+RMSE_Training <- c(523.3887, 631.5425, 600.1979, 673.85, 619.6501, 609.0449, 612.5235, 610.0282)
+RMSE_Validation <- c(703.8613, 648.6078, 881.2825, 554.8573, 606.7311, 869.0503, 620.1413, 697.7902)
+Relative_MSE <- c(0.3678892, 0.3584252, 0.520274, 0.2964047, 0.3123263, 0.4998025, 0.3414394, 0.385223)
+MSE_out <- tibble(Trial_ID, Validation_Response_Mean, MSE_Training, MSE_Validation, RMSE_Training, RMSE_Validation, Relative_MSE)
+MSE_out %>% kbl(caption = "MSE Output") %>% kable_classic(full_width = F, html_font = "Cambria")
 ```
-
-```{r weekday_share, eval=FALSE, echo=FALSE}
-# share by weekday, not ylim to reduce clustering
-ggplot(Data)+geom_point(aes(Post.Weekday, share, color = as.factor(Paid)), position = "jitter") + ylim(c(0,125))
-```
-
-
-
-Since Consumers includes like, comment, and shares, some metrics such as "LP_Engage_With_Post" does not provide useful predictions for our response variable because they are composed of element from Consumers. Other variables such as "Comment" is simply a component of Consumers. Thus, we don't consider these either. In other words, these variables are simply a function of Consumers.
-
-aside from the seven predictors
-all variables other than the seven input features are dependent, but some might show relationships
-
-analyze only the 3 time related variables, use ANOVA to find the maximum, posts made in what month, what day, what hour tend to be more popular? find holiday data and compare whether you should make posts on holidays. Does not exclude the fact that 
-
-
