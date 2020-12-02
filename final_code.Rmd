@@ -13,6 +13,8 @@ output:
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+
+
 ```{r load, message=FALSE}
 # loading packages
 suppressPackageStartupMessages(library(tidyverse))
@@ -21,84 +23,120 @@ suppressPackageStartupMessages(library(hrbrthemes))
 suppressPackageStartupMessages(library(GGally))
 suppressPackageStartupMessages(library(gridExtra))
 suppressPackageStartupMessages(library(plotly))
-suppressPackageStartupMessages(library(sjPlot))
 suppressPackageStartupMessages(library(kableExtra))
+suppressPackageStartupMessages(library(sjPlot))
+suppressPackageStartupMessages(library(solitude))
 # loading datasets
 fb <- read_delim("dataset_Facebook.csv", delim = ";")
-fb <- fb[complete.cases(fb), ] %>% mutate(Category = as.factor(Category), Paid = as.factor(Paid))
+fb <- fb[complete.cases(fb), ] %>% mutate(Category = as.factor(Category), Paid = as.factor(Paid), Month = as.factor(Month), Weekday = as.factor(Weekday), Hour = as.factor(Hour))
+fb <- tibble::rowid_to_column(fb, "ID")
 
 # center titles for ggplot
 theme_update(plot.title = element_text(hjust = 0.5))
 ```
 
-```{r heatmap}
-# Page_T_Likes heatmap
-png("heatmap.png", width = 6, height = 4, units = 'in', res = 300)
-fb %>% transmute(Page_T_Likes = cut_number(Page_T_Likes, 6), Consumers = cut_number(Consumers, 6)) %>% count(Page_T_Likes, Consumers) %>% ggplot(aes(Page_T_Likes, Consumers)) + geom_tile(aes(fill = n)) + scale_x_discrete(labels = abbreviate) + scale_fill_viridis_c()
-dev.off()
 
-```
-
-```{r outlier}
-# computer mean and sd
-like_mean = mean(fb$Page_T_Likes)
-like_sd = sd(fb$Page_T_Likes)
-
-# compute table without outliers beyond 3 standard deviation
-fb.clean <- fb %>% filter(Page_T_Likes <= like_mean+3*like_sd)
-
-# calculate percentage of datapoints excluded 
-removedt <- (1 - nrow(fb.clean)/nrow(fb))*100
-percentage_tibble <- tribble(~Variable, ~Percentage_Outside_3_SD, "Page Total Likes", removedt)
-(percentage_tibble)
-```
 
 ```{r boxplots}
-png("vio_type.png", width = 6, height = 4, units = 'in', res = 300)
-fb.clean %>% ggplot(aes(factor(Type), Consumers)) + geom_violin()
+# construct boxplots and identify outliers
+png("box_type.png", width = 6, height = 4, units = 'in', res = 300)
+fb %>% ggplot(aes(Type, Consumers)) + scale_y_log10() + geom_point(aes(color=Type), alpha=0.2, position='jitter') + geom_boxplot(outlier.size=5, outlier.colour="blue", alpha=0.1)
 dev.off()
 
-png("vio_cate.png", width = 6, height = 4, units = 'in', res = 300)
-fb.clean %>% ggplot(aes(factor(Category), Consumers)) + geom_violin()
+png("box_cate.png", width = 6, height = 4, units = 'in', res = 300)
+fb %>% ggplot(aes(Category, Consumers)) + scale_y_log10() + geom_point(aes(color=Category), alpha=0.2, position='jitter') + geom_boxplot(outlier.size=5, outlier.colour="blue", alpha=0.1)
 dev.off()
 
-png("vio_mont.png", width = 6, height = 4, units = 'in', res = 300)
-fb.clean %>% ggplot(aes(factor(Month), Consumers)) + geom_violin()
+png("box_mont.png", width = 6, height = 4, units = 'in', res = 300)
+fb %>% ggplot(aes(as.factor(Month), Consumers)) + scale_y_log10() + geom_point(aes(color=as.factor(Month)), alpha=0.2, position='jitter') + geom_boxplot(outlier.size=5, outlier.colour="blue", alpha=0.1)
 dev.off()
 
-png("vio_week.png", width = 6, height = 4, units = 'in', res = 300)
-fb.clean %>% ggplot(aes(factor(Weekday), Consumers)) + geom_violin()
+png("box_week.png", width = 6, height = 4, units = 'in', res = 300)
+fb %>% ggplot(aes(as.factor(Weekday), Consumers)) + scale_y_log10() + geom_point(aes(color=as.factor(Weekday)), alpha=0.2, position='jitter') + geom_boxplot(outlier.size=5, outlier.colour="blue", alpha=0.1)
 dev.off()
 
-png("vio_hour.png", width = 6, height = 4, units = 'in', res = 300)
-fb.clean %>% ggplot(aes(factor(Hour), Consumers)) + geom_violin()
+png("box_hour.png", width = 6, height = 4, units = 'in', res = 300)
+fb %>% ggplot(aes(as.factor(Hour), Consumers)) + scale_y_log10() + geom_point(aes(color=as.factor(Hour)), alpha=0.2, position='jitter') + geom_boxplot(outlier.size=5, outlier.colour="blue", alpha=0.1)
 dev.off()
 
-png("vio_paid.png", width = 6, height = 4, units = 'in', res = 300)
-fb.clean %>% ggplot(aes(factor(Paid), Consumers)) + geom_violin()
+png("box_paid.png", width = 6, height = 4, units = 'in', res = 300)
+fb %>% ggplot(aes(Paid, Consumers)) + scale_y_log10() + geom_point(aes(color=Paid), alpha=0.2, position='jitter') + geom_boxplot(outlier.size=5, outlier.colour="blue", alpha=0.1)
 dev.off()
+
+png("boxplot_outlier.png", width = 6, height = 4, units = 'in', res = 300)
+fb %>% ggplot(aes("", Consumers)) + scale_y_log10() + geom_point(alpha=0.2, position='jitter') + geom_boxplot(outlier.size=5, outlier.colour="blue", alpha=0.1)
+dev.off()
+
+# find the min of the output and filter out all observations greater than that mean
+IQR_outliers <- boxplot.stats(fb$Consumers, coef = 1.5)$out
+min(IQR_outliers)
+
+fb.IQR <- fb %>% filter(Consumers < 1921)
 ```
+
+
+
+```{r iforest}
+# isolation forest with default parameters
+iforest<- isolationForest$new()
+fb.input <- fb %>% select(Page_T_Likes:Paid, Consumers)
+iforest$fit(fb.input)
+
+# predict outliers within dataset
+fb.input$pred <- iforest$predict(fb.input)
+
+# finding the distribution of average depth and excluding points with an average depth beyond 2 standard deviation, which considers 95% of all observations
+mean_depth <- mean(fb.input$pred$average_depth)
+sd_depth <- sd(fb.input$pred$average_depth)
+temp <- mean_depth - 3*sd_depth
+
+fb.input$outlier <- as.factor(ifelse(fb.input$pred$average_depth < temp, "outlier", "normal"))
+
+# form the cleaned dataset derived from isolation forest
+fb.input <- tibble::rowid_to_column(fb.input, "ID")
+fb.iso <- fb.input %>% filter(pred$average_depth >= temp) %>% select(ID:Consumers)
+
+# iforest boxplot
+png("iforest_outlier.png", width = 6, height = 4, units = 'in', res = 300)
+fb.iso %>% ggplot(aes("", Consumers)) + geom_point(alpha=0.2, position='jitter') + geom_boxplot(outlier.size=5, outlier.colour="blue", alpha=0.1)
+dev.off()
+
+fb.iso <- fb.iso %>% select(ID)
+```
+
+
+
+```{r form_clean}
+# combine iforest and boxplot results to form clean dataset
+fb.clean <- inner_join(fb.IQR, fb.iso, by = "ID")
+```
+
+
 
 ```{r cov, message=FALSE}
 # scatter matrix
 png("matrix.png", width = 6, height = 4, units = 'in', res = 300)
-fb.clean %>% select(Page_T_Likes, Type, Category, Month, Weekday, Hour, Paid, Consumers) %>% transmute(Page_Likes = Page_T_Likes, Type, Category, Month, Weekday, Hour, Paid, Consumers) %>% ggpairs(lower = list(continuous = wrap("points", alpha = 0.3, size=0.1, label = abbreviate)), upper = list(continuous = wrap("cor", size = 2))) + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1), strip.placement = "outside", text = element_text(size = 6))
+fb.clean %>% select(Page_T_Likes, Type, Category, Month, Weekday, Hour, Paid, Consumers) %>% transmute(Page_Likes = Page_T_Likes, Type, Category = as.numeric(Category), Month = as.numeric(Month), Weekday = as.numeric(Weekday), Hour = as.numeric(Hour), Paid = as.numeric(Paid), Consumers) %>% ggpairs(lower = list(continuous = wrap("points", alpha = 0.3, size=0.1, label = abbreviate)), upper = list(continuous = wrap("cor", size = 2))) + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1), strip.placement = "outside", text = element_text(size = 6))
 dev.off()
 ```
 
+
+
 ```{r MLS}
-m.mls <- lm(Consumers ~ Page_T_Likes + Type + Paid - 1, data = fb.clean)
+m.mls <- lm(Consumers ~ Type + Month -1, data = fb.clean)
+summary(m.mls)
+cooksd <- cooks.distance(m.mls)
+plot(cooksd, pch="*", cex=2, main="Influential Obs by Cooks distance")  # plot cook's distance
+abline(h = 4*mean(cooksd, na.rm=T), col="red")  # add cutoff line
+text(x=1:length(cooksd)+1, y=cooksd, labels=ifelse(cooksd>4*mean(cooksd, na.rm=T),names(cooksd),""), col="red")  # add labels
+
 ```
 
 ```{r MLStable, eval=FALSE}
 tab_model(m.mls, show.se = TRUE, show.std = TRUE, show.stat = TRUE)
 ```
 
-```{r 3D, eval=FALSE}
-# 3D :)
-fb.clean <- fb.clean %>% add_predictions(m.mls)
-fb.clean %>% plot_ly(x = ~Page_T_Likes, y = ~Type, z = ~pred, color = ~as.factor(Paid), colors = c('#BF382A', '#0C4B8E')) %>% add_markers(size = 5)
-```
+
 
 ```{r residual6000}
 # first build residual from quadratic model to compare against mls
@@ -132,7 +170,7 @@ dev.off()
 png("qq.png", width = 6, height = 4, units = 'in', res = 300)
 p <- ggplot(data.frame(StanResMLS1), aes(sample = StanResMLS1)) +
 ggtitle("QQ MLS Plot")
-p + stat_qq(size = 0.5) + stat_qq_line()
+p + stat_qq(size = 1) + stat_qq_line()
 dev.off()
 
 png("his30.png", width = 6, height = 4, units = 'in', res = 300)
@@ -152,6 +190,8 @@ fb.validation <- fb.random[249:495,]
 m.mls_train <- lm(Consumers ~ Page_T_Likes + Type + Paid - 1, data = fb.train)
 ResMLS_train <- resid(m.mls_train)
 ```
+
+
 
 ```{r validation}
 # residual for validation
