@@ -15,100 +15,105 @@ knitr::opts_chunk$set(echo = TRUE)
 
 
 
-```{r load, message=FALSE}
+```{r load_package, message=FALSE}
 # loading packages
+suppressPackageStartupMessages(library(MASS))
 suppressPackageStartupMessages(library(tidyverse))
 suppressPackageStartupMessages(library(modelr))
 suppressPackageStartupMessages(library(hrbrthemes))
 suppressPackageStartupMessages(library(GGally))
 suppressPackageStartupMessages(library(gridExtra))
-suppressPackageStartupMessages(library(plotly))
 suppressPackageStartupMessages(library(kableExtra))
 suppressPackageStartupMessages(library(sjPlot))
 suppressPackageStartupMessages(library(solitude))
+suppressPackageStartupMessages(library(glmnet))
+suppressPackageStartupMessages(library(plotmo))
+suppressPackageStartupMessages(library(rcompanion))
+suppressPackageStartupMessages(library(car))
+suppressPackageStartupMessages(library(lmtest))
+```
+
+
+
+```{r load_dataset_form_training, message=FALSE}
 # loading datasets
 fb <- read_delim("dataset_Facebook.csv", delim = ";")
 fb <- fb[complete.cases(fb), ] %>% mutate(Category = as.factor(Category), Paid = as.factor(Paid), Month = as.factor(Month), Weekday = as.factor(Weekday), Hour = as.factor(Hour))
-fb <- tibble::rowid_to_column(fb, "ID")
 
 # center titles for ggplot
 theme_update(plot.title = element_text(hjust = 0.5))
+
+# random sample and training
+fb.random <- fb[sample(nrow(fb)),]
+fb.train <- fb.random[1:248,]
+fb.validation <- fb.random[249:495,]
 ```
 
 
 
-```{r boxplots}
-# construct boxplots and identify outliers
-png("box_type.png", width = 6, height = 4, units = 'in', res = 300)
-fb %>% ggplot(aes(Type, Consumers)) + scale_y_log10() + geom_point(aes(color=Type), alpha=0.2, position='jitter') + geom_boxplot(outlier.size=5, outlier.colour="blue", alpha=0.1)
-dev.off()
-
-png("box_cate.png", width = 6, height = 4, units = 'in', res = 300)
-fb %>% ggplot(aes(Category, Consumers)) + scale_y_log10() + geom_point(aes(color=Category), alpha=0.2, position='jitter') + geom_boxplot(outlier.size=5, outlier.colour="blue", alpha=0.1)
-dev.off()
-
-png("box_mont.png", width = 6, height = 4, units = 'in', res = 300)
-fb %>% ggplot(aes(as.factor(Month), Consumers)) + scale_y_log10() + geom_point(aes(color=as.factor(Month)), alpha=0.2, position='jitter') + geom_boxplot(outlier.size=5, outlier.colour="blue", alpha=0.1)
-dev.off()
-
-png("box_week.png", width = 6, height = 4, units = 'in', res = 300)
-fb %>% ggplot(aes(as.factor(Weekday), Consumers)) + scale_y_log10() + geom_point(aes(color=as.factor(Weekday)), alpha=0.2, position='jitter') + geom_boxplot(outlier.size=5, outlier.colour="blue", alpha=0.1)
-dev.off()
-
-png("box_hour.png", width = 6, height = 4, units = 'in', res = 300)
-fb %>% ggplot(aes(as.factor(Hour), Consumers)) + scale_y_log10() + geom_point(aes(color=as.factor(Hour)), alpha=0.2, position='jitter') + geom_boxplot(outlier.size=5, outlier.colour="blue", alpha=0.1)
-dev.off()
-
-png("box_paid.png", width = 6, height = 4, units = 'in', res = 300)
-fb %>% ggplot(aes(Paid, Consumers)) + scale_y_log10() + geom_point(aes(color=Paid), alpha=0.2, position='jitter') + geom_boxplot(outlier.size=5, outlier.colour="blue", alpha=0.1)
-dev.off()
-
+```{r IQR}
 png("boxplot_outlier.png", width = 6, height = 4, units = 'in', res = 300)
-fb %>% ggplot(aes("", Consumers)) + scale_y_log10() + geom_point(alpha=0.2, position='jitter') + geom_boxplot(outlier.size=5, outlier.colour="blue", alpha=0.1)
+fb.train %>% ggplot(aes("", Consumers)) + geom_point(alpha=0.2, position='jitter') + geom_boxplot(outlier.size=4, outlier.colour="blue", alpha=0.1)
 dev.off()
 
-# find the min of the output and filter out all observations greater than that mean
-IQR_outliers <- boxplot.stats(fb$Consumers, coef = 1.5)$out
-min(IQR_outliers)
-
-fb.IQR <- fb %>% filter(Consumers < 1921)
+IQR_outliers <- boxplot.stats(fb.train$Consumers, coef = 3)$out
+fb.clean <- fb.train %>% filter(!(Consumers %in% IQR_outliers))
 ```
 
 
 
-```{r iforest}
-# isolation forest with default parameters
-iforest<- isolationForest$new()
-fb.input <- fb %>% select(Page_T_Likes:Paid, Consumers)
-iforest$fit(fb.input)
-
-# predict outliers within dataset
-fb.input$pred <- iforest$predict(fb.input)
-
-# finding the distribution of average depth and excluding points with an average depth beyond 2 standard deviation, which considers 95% of all observations
-mean_depth <- mean(fb.input$pred$average_depth)
-sd_depth <- sd(fb.input$pred$average_depth)
-temp <- mean_depth - 3*sd_depth
-
-fb.input$outlier <- as.factor(ifelse(fb.input$pred$average_depth < temp, "outlier", "normal"))
-
-# form the cleaned dataset derived from isolation forest
-fb.input <- tibble::rowid_to_column(fb.input, "ID")
-fb.iso <- fb.input %>% filter(pred$average_depth >= temp) %>% select(ID:Consumers)
-
-# iforest boxplot
-png("iforest_outlier.png", width = 6, height = 4, units = 'in', res = 300)
-fb.iso %>% ggplot(aes("", Consumers)) + geom_point(alpha=0.2, position='jitter') + geom_boxplot(outlier.size=5, outlier.colour="blue", alpha=0.1)
+```{r transform_check}
+png("histo_pre_trans.png", width = 6, height = 4, units = 'in', res = 300)
+fb.clean %>% ggplot(aes(Consumers)) + geom_histogram()
 dev.off()
 
-fb.iso <- fb.iso %>% select(ID)
+tukey_ladder <- function(){
+  fb.random.r <- fb[sample(nrow(fb)),]
+  fb.train.r <- fb.random.r[1:248,]
+  fb.validation.r <- fb.random.r[249:495,]
+  ConsumersTrans = transformTukey(fb.train.r$Consumers, returnLambda = TRUE, quiet = TRUE, plotit = FALSE)
+  unname(ConsumersTrans)[1]
+}
+
+tukey_100 <- tibble("lambda" = -1)
+for (i in 1:100) {
+  temp_value <- tukey_ladder()
+  tukey_100 <- tukey_100 %>% add_row(lambda = temp_value)
+}
+
+png("lambda_histo.png", width = 6, height = 4, units = 'in', res = 300)
+tukey_100[-1,] %>% count(lambda) %>% ggplot(aes(lambda, n)) + geom_bar(stat="identity") + labs(x = "Lambda Identifiers")
+dev.off()
 ```
 
 
 
-```{r form_clean}
-# combine iforest and boxplot results to form clean dataset
-fb.clean <- inner_join(fb.IQR, fb.iso, by = "ID")
+```{r transform_power, eval=FALSE}
+this_best_lambda <- unname(transformTukey(fb.clean$Consumers, returnLambda = TRUE, quiet = TRUE, plotit = FALSE))[1]
+
+png("histo_post_trans.png", width = 6, height = 4, units = 'in', res = 300)
+fb.clean %>% ggplot(aes((Consumers)^this_best_lambda)) + geom_histogram()
+dev.off()
+
+fb.train <- fb.clean %>% mutate(logConsumers = (Consumers)^this_best_lambda) %>% select(Page_T_Likes:Paid, Consumers, logConsumers)
+
+fb.clean <- fb.clean %>% mutate(logConsumers = (Consumers)^this_best_lambda) %>% select(Page_T_Likes:Paid, Consumers, logConsumers)
+
+fb.validation <- fb.validation %>% mutate(logConsumers = (Consumers)^this_best_lambda) %>% select(Page_T_Likes:Paid, Consumers, logConsumers)
+
+fb <- fb %>% mutate(logConsumers = (Consumers)^this_best_lambda)
+```
+
+
+
+```{r transform_log}
+fb.train <- fb.clean %>% mutate(logConsumers = log10(Consumers)) %>% select(Page_T_Likes:Paid, Consumers, logConsumers)
+
+fb.clean <- fb.clean %>% mutate(logConsumers = log10(Consumers)) %>% select(Page_T_Likes:Paid, Consumers, logConsumers)
+
+fb.validation <- fb.validation %>% mutate(logConsumers = log10(Consumers)) %>% select(Page_T_Likes:Paid, Consumers, logConsumers)
+
+fb <- fb %>% mutate(logConsumers = log10(Consumers))
 ```
 
 
@@ -116,125 +121,270 @@ fb.clean <- inner_join(fb.IQR, fb.iso, by = "ID")
 ```{r cov, message=FALSE}
 # scatter matrix
 png("matrix.png", width = 6, height = 4, units = 'in', res = 300)
-fb.clean %>% select(Page_T_Likes, Type, Category, Month, Weekday, Hour, Paid, Consumers) %>% transmute(Page_Likes = Page_T_Likes, Type, Category = as.numeric(Category), Month = as.numeric(Month), Weekday = as.numeric(Weekday), Hour = as.numeric(Hour), Paid = as.numeric(Paid), Consumers) %>% ggpairs(lower = list(continuous = wrap("points", alpha = 0.3, size=0.1, label = abbreviate)), upper = list(continuous = wrap("cor", size = 2))) + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1), strip.placement = "outside", text = element_text(size = 6))
+fb.clean %>% select(Page_T_Likes, Type, Category, Month, Weekday, Hour, Paid, logConsumers) %>% transmute(Page_Likes = Page_T_Likes, Type, Category = as.numeric(Category), Month = as.numeric(Month), Weekday = as.numeric(Weekday), Hour = as.numeric(Hour), Paid = as.numeric(Paid), logConsumers) %>% ggpairs(lower = list(continuous = wrap("points", alpha = 0.3, size=0.1, label = abbreviate)), upper = list(continuous = wrap("cor", size = 2))) + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1), strip.placement = "outside", text = element_text(size = 6))
+dev.off()
+```
+
+
+
+```{r lasso_old}
+# form x and y
+xfactors <- model.matrix(fb.clean$logConsumers ~ fb.clean$Type + fb.clean$Category + fb.clean$Month + fb.clean$Weekday + fb.clean$Hour + fb.clean$Paid)[, -1]
+x <- as.matrix(data.frame(fb.clean$Page_T_Likes, xfactors))
+y <- fb.clean$logConsumers
+
+# cross validation to find best lambda
+cvfit <- cv.glmnet(x, y)
+
+png("cv_lasso.png", width = 6, height = 4, units = 'in', res = 300)
+plot(cvfit)
+dev.off()
+lambda_best = cvfit$lambda.1se
+
+# use best lambda to fit model
+lasso_model <- glmnet(x, y, alpha = 1, lambda = lambda_best, standardize = TRUE)
+
+# extract non-zero coefficients
+nonzero_coef <- coef(lasso_model, complete = TRUE)
+
+plot_lasso <- glmnet(x, y, alpha = 1, standardize = TRUE)
+# Plot variable coefficients vs. shrinkage parameter lambda.
+png("lasso44.png", width = 6, height = 4, units = 'in', res = 300)
+plot(plot_lasso, xvar="lambda")
+dev.off()
+
+# obtain dimension names in preparation to match repeated lasso to output
+coef_names <- unlist(nonzero_coef@Dimnames[1])[-1]
+```
+
+
+
+```{r repeated_lasso_old}
+# mutate log Consumers in original dataset first
+single_lasso <- function(){
+  fb.random.r <- fb[sample(nrow(fb)),]
+  fb.train.r <- fb.random.r[1:248,]
+
+  xfactors.r <- model.matrix(fb.train.r$logConsumers ~ fb.train.r$Type + fb.train.r$Category + fb.train.r$Month + fb.train.r$Weekday + fb.train.r$Hour + fb.train.r$Paid)[, -1]
+  x.r <- as.matrix(data.frame(fb.train.r$Page_T_Likes, xfactors.r))
+  y.r <- fb.train.r$logConsumers
+  cvfit.r <- cv.glmnet(x.r, y.r)
+  lambda_best.r = cvfit.r$lambda.1se
+  lasso_model.r <- glmnet(x.r, y.r, alpha = 1, lambda = lambda_best.r, standardize = TRUE)
+  
+  nonzero_coef.r <- coef(lasso_model.r, complete = TRUE)
+  nonzero_coef.r@i
+}
+
+lasso_200 <- tibble("feature" = -1)
+for (i in 1:200) {
+  temp_vector <- single_lasso()
+  lasso_200 <- lasso_200 %>% add_row(feature = temp_vector)
+}
+```
+
+
+
+```{r repeated_lasso_old_processing}
+lasso_200_out <- lasso_200[-1,] %>% count(feature) %>% mutate(Significance = ifelse(n>=140, "Significant", "Not Significant"))
+
+png("lasso_select.png", width = 6, height = 4, units = 'in', res = 300)
+lasso_200_out %>% ggplot(aes(feature, n, fill = Significance)) + geom_bar(stat="identity") + geom_abline(intercept = 140, slope = 0, color = "red") + labs(x = "Feature Identifier")
+dev.off()
+
+# This shows the features that LASSO selected at least once
+# coef_names shows the list of all features
+# coef_names[lasso_200_out$feature]
+```
+
+
+
+```{r anova}
+# Month ANOVA
+owa.Month <- aov(logConsumers~Month, fb.train)
+tukey.Month <- TukeyHSD(owa.Month)
+png("tukey_month.png", width = 6, height = 4, units = 'in', res = 300)
+plot(tukey.Month, las = 1, col = "brown")
+dev.off()
+
+# Type ANOVA
+owa.Type <- aov(logConsumers~Type, fb.train)
+tukey.Type <- TukeyHSD(owa.Type)
+png("tukey_type.png", width = 6, height = 4, units = 'in', res = 300)
+par(mar=c(5,6,4,1)+.1)
+plot(tukey.Type, las = 1, col = "brown")
+dev.off()
+
+png("box_mont.png", width = 6, height = 4, units = 'in', res = 300)
+fb %>% ggplot(aes(Month, logConsumers)) + geom_point(aes(color=Month), alpha=0.2, position='jitter') + geom_boxplot(outlier.size=5, outlier.colour="blue", alpha=0.1)
+dev.off()
+
+png("box_type.png", width = 6, height = 4, units = 'in', res = 300)
+fb %>% ggplot(aes(Type, logConsumers)) + geom_point(aes(color=Type), alpha=0.2, position='jitter') + geom_boxplot(outlier.size=5, outlier.colour="blue", alpha=0.1)
+dev.off()
+```
+
+
+
+```{r lasso_new}
+fb.lasso2 <- fb.train %>% mutate(isStatus = ifelse(Type == "Status", 1, 0), is1112 = ifelse(Month %in% c(11, 12), 1, 0)) %>% select(Page_T_Likes, isStatus, is1112, Consumers, logConsumers) %>% mutate(isStatus = as.factor(isStatus), is1112 = as.factor(is1112))
+
+xfactors1 <- model.matrix(fb.lasso2$logConsumers ~ fb.lasso2$isStatus + fb.lasso2$is1112)[, -1]
+x1 <- as.matrix(data.frame(fb.lasso2$Page_T_Likes, xfactors1))
+y1 <- fb.lasso2$logConsumers
+
+cvfit1 <- cv.glmnet(x1, y1)
+
+png("cv_lasso_new.png", width = 6, height = 4, units = 'in', res = 300)
+plot(cvfit1)
+dev.off()
+
+
+lambda_best1 = cvfit1$lambda.1se
+lasso_model1 <- glmnet(x1, y1, alpha = 1, standardize = TRUE)
+
+png("lasso_newvar.png", width = 6, height = 4, units = 'in', res = 300)
+plot_glmnet(lasso_model1)
+dev.off()
+
+nonzero_coef1 <- coef(lasso_model1, complete = TRUE)
+
+coef_names1 <- unlist(nonzero_coef1@Dimnames[1])[-1]
+```
+
+
+
+```{r repeated_lasso_new}
+single_lasso1 <- function(){
+  fb.random.r <- fb[sample(nrow(fb)),]
+  fb.train.r <- fb.random.r[1:248,]
+
+  fb.lasso2 <- fb.train.r %>% mutate(isStatus = ifelse(Type == "Status", 1, 0), is1112 = ifelse(Month %in% c(11, 12), 1, 0)) %>% select(Page_T_Likes, isStatus, is1112, Consumers, logConsumers) %>% mutate(isStatus = as.factor(isStatus), is1112 = as.factor(is1112))
+
+  xfactors1 <- model.matrix(fb.lasso2$logConsumers ~ fb.lasso2$isStatus + fb.lasso2$is1112)[, -1]
+  x1 <- as.matrix(data.frame(fb.lasso2$Page_T_Likes, xfactors1))
+  y1 <- fb.lasso2$logConsumers
+  cvfit1 <- cv.glmnet(x1, y1)
+  lambda_best1 = cvfit1$lambda.1se
+  lasso_model1 <- glmnet(x1, y1, alpha = 1, lambda = lambda_best1, standardize = TRUE)
+  
+  nonzero_coef1 <- coef(lasso_model1, complete = TRUE)
+  nonzero_coef1@i
+}
+
+lasso_200n <- tibble("feature" = -1)
+for (i in 1:200) {
+  temp_vector1 <- single_lasso1()
+  lasso_200n <- lasso_200n %>% add_row(feature = temp_vector1)
+}
+```
+
+
+
+```{r repeated_lasso_new_processing}
+lasso_200n_out <- lasso_200n[-1,] %>% count(feature) %>% mutate(Significance = ifelse(n>=140, "Significant", "Not Significant"))
+
+png("lasso_select_new.png", width = 6, height = 4, units = 'in', res = 300)
+lasso_200n_out %>% ggplot(aes(feature, n, fill = Significance)) + geom_bar(stat="identity") + geom_abline(intercept = 140, slope = 0, color = "red") + labs(x = "Feature Identifier")
 dev.off()
 ```
 
 
 
 ```{r MLS}
-m.mls <- lm(Consumers ~ Type + Month -1, data = fb.clean)
-summary(m.mls)
-cooksd <- cooks.distance(m.mls)
-plot(cooksd, pch="*", cex=2, main="Influential Obs by Cooks distance")  # plot cook's distance
-abline(h = 4*mean(cooksd, na.rm=T), col="red")  # add cutoff line
-text(x=1:length(cooksd)+1, y=cooksd, labels=ifelse(cooksd>4*mean(cooksd, na.rm=T),names(cooksd),""), col="red")  # add labels
+# initialize the newly created variable in both the training and validation dataset
+fb.train.new <- fb.clean %>% mutate(isStatus = ifelse(Type == "Status", 1, 0), is1112 = ifelse(Month %in% c(11, 12), 1, 0)) %>% select(Page_T_Likes, isStatus, is1112, Consumers, logConsumers) %>% mutate(isStatus = as.factor(isStatus), is1112 = as.factor(is1112))
 
-```
+fb.validation.new <- fb.validation %>% mutate(isStatus = ifelse(Type == "Status", 1, 0), is1112 = ifelse(Month %in% c(11, 12), 1, 0)) %>% select(Page_T_Likes, isStatus, is1112, Consumers, logConsumers) %>% mutate(isStatus = as.factor(isStatus), is1112 = as.factor(is1112))
 
-```{r MLStable, eval=FALSE}
-tab_model(m.mls, show.se = TRUE, show.std = TRUE, show.stat = TRUE)
+m.mls_train <- lm(logConsumers ~ Page_T_Likes + isStatus + is1112, data = fb.train.new)
+
+tab_model(m.mls_train, show.se = TRUE, show.stat = TRUE, show.fstat = TRUE, show.intercept = TRUE, digits = 6)
 ```
 
 
 
-```{r residual6000}
-# first build residual from quadratic model to compare against mls
-m.qls1 <- fb.clean %>% filter(Consumers <= 6000) %>% lm(Consumers ~ Page_T_Likes + I(Page_T_Likes^2), .)
-StanResQLS1 <- rstandard(m.qls1)
+```{r residual}
+m.mls_cat <- lm(logConsumers ~ isStatus + + is1112 -1, data = fb.train.new)
+StanResMLS2 <- rstandard(m.mls_cat)
+mfit2 = fitted(m.mls_cat)
 
-# standardize for mls and plotting
-m.mls1 <- fb.clean %>% filter(Consumers <= 6000) %>% lm(Consumers ~ Page_T_Likes + Type + Paid, .)
-StanResMLS1 <- rstandard(m.mls1)
-png("stdres.png", width = 6, height = 4, units = 'in', res = 300)
-fb.clean %>% filter(Consumers <= 6000) %>% ggplot() + geom_point(aes(Consumers, StanResQLS1, color = "Quadratic"), size = 0.1) + geom_point(aes(Consumers, StanResMLS1, color = "MLS"), size = 0.1) +
-geom_hline(yintercept=2,color='blue') + geom_hline(yintercept=-2, color='blue') +
-scale_color_manual(name = element_blank(), labels = c("MLS","Quadratic"), values = c("red","blue")) +
-labs(y = "Standarized Residual") + ggtitle("Standarized Residuals Plot")
-dev.off()
 
-# fitted residuals
-qfit1 = fitted(m.qls1)
-mfit1 = fitted(m.mls1)
+plot(m.mls_train$fitted.values,  rstandard(f1))
+plot(m.mls_cat$fitted.values,  rstandard(f1))
 
-png("fitres.png", width = 6, height = 4, units = 'in', res = 300)
-fb.clean %>% filter(Consumers <= 6000) %>% ggplot() + geom_point(aes(qfit1, StanResQLS1, color = "Quadratic"), size = 0.1) + geom_point(aes(mfit1, StanResMLS1, color = "MLS"), size = 0.1) +
-geom_hline(yintercept=2,color='blue') + geom_hline(yintercept=-2, color='blue') +
-scale_color_manual(name = element_blank(), labels = c("MLS","Quadratic"), values = c("red","blue")) +
-labs(y = "Standarized Residual") + labs(x = "Fitted value") +
-ggtitle("Standarized Residuals Plot (Fitted) ")
-dev.off()
-```
+plot(m.mls_train)
+plot(m.mls_cat)
+leveragePlots(m.mls_train)
+bptest(m.mls_train)
 
-```{r qqhisto}
-png("qq.png", width = 6, height = 4, units = 'in', res = 300)
-p <- ggplot(data.frame(StanResMLS1), aes(sample = StanResMLS1)) +
-ggtitle("QQ MLS Plot")
-p + stat_qq(size = 1) + stat_qq_line()
-dev.off()
 
+
+# histogram
+StanResMLS1 <- rstandard(m.mls_train)
+mfit1 = fitted(m.mls_train)
 png("his30.png", width = 6, height = 4, units = 'in', res = 300)
-ggplot(data = data.frame(StanResMLS1), aes(x = StanResMLS1)) + geom_histogram(bins = 30) + labs(x = "Standardized Residuals") + ggtitle("Histogram MLS Plot 30 bin")
+ggplot(data = data.frame(StanResMLS1), aes(x = StanResMLS1)) + geom_histogram(bins = 30) + labs(x = "Standardized Residuals") + ggtitle("Residual Histogram 30 bin")
 dev.off()
 
-png("his60.png", width = 6, height = 4, units = 'in', res = 300)
-ggplot(data = data.frame(StanResMLS1), aes(x = StanResMLS1)) + geom_histogram(bins = 60) + labs(x = "Standardized Residuals") + ggtitle("Histogram MLS Plot 60 bin")
-dev.off()
-```
 
-```{r training}
-# random sample and training
-fb.random = fb.clean[sample(nrow(fb.clean)),]
-fb.train <- fb.random[1:248,]
-fb.validation <- fb.random[249:495,]
-m.mls_train <- lm(Consumers ~ Page_T_Likes + Type + Paid - 1, data = fb.train)
-ResMLS_train <- resid(m.mls_train)
-```
 
+```
 
 
 ```{r validation}
+
+
+
+# grab the useful information from previous code chunks, write a function to run the code n times and give a mean
+
+
 # residual for validation
-output <- predict(m.mls_train, se.fit = TRUE, newdata=data.frame(Page_T_Likes=fb.validation$Page_T_Likes, Type=fb.validation$Type, Paid=fb.validation$Paid))
-ResMLSValidation <- fb.validation$Consumers - output$fit
+output <- predict(m.mls_train, se.fit = TRUE, newdata=data.frame(Page_T_Likes=fb.validation.new$Page_T_Likes, isStatus=fb.validation.new$isStatus, is1112=fb.validation.new$is1112))
+ResMLSValidation <- fb.validation.new$logConsumers - output$fit
 
-# MSE of data
-mean(fb.validation$Consumers)
 
-# Remove outliers
-ResMLS_tn <- ResMLS_train[ResMLS_train<max(ResMLS_train)]
-mean((ResMLS_tn)^2)
-
-# MSE
+# MSE training
+mean((ResMLS_train)^2)
+# MSE validation
 mean((ResMLSValidation)^2)
-
 # relative MSE
-mean((ResMLSValidation)^2) / mean((fb.validation$Consumers)^2)
-
-# RMSE
-sqrt(mean((ResMLS_tn)^2))
+mean((ResMLSValidation)^2) / mean((fb.validation.new$logConsumers)^2)
+# RMSE training
+sqrt(mean((ResMLS_train)^2))
+# RMSE validation
 sqrt(mean((ResMLSValidation)^2))
 
 # validation observation with predictions
-test = data.frame(fb.validation$Consumers,output$fit, 1:length(output$fit));
-colnames(test)[1] = "Consumers"
+test = data.frame(fb.validation.new$logConsumers,output$fit, 1:length(output$fit));
+colnames(test)[1] = "logConsumers"
 colnames(test)[2] = "Prediction"
 colnames(test)[3] = "Index"
 
-# Consumers vs Prediction for validation dataset
+# Consumers vs Prediction for validation dataset (full model)
 png("validation_line.png", width = 6, height = 4, units = 'in', res = 300)
-test %>% filter(Consumers <= 6000) %>% ggplot(aes(x = Consumers, y = Prediction)) + geom_point() + geom_abline(intercept = 0, slope = 1) + ggtitle("Validation Consumers vs Prediction")
+test %>% ggplot(aes(x = logConsumers, y = Prediction)) + geom_point() + geom_abline(intercept = 0, slope = 1) + ggtitle("Validation logConsumers vs Prediction")
 dev.off()
 
-# further analysis
+# Consumers vs Prediction for validation dataset (categorical only)
+output11 <- predict(m.mls_cat, se.fit = TRUE, newdata=data.frame(isStatus=fb.validation.new$isStatus, is1112=fb.validation.new$is1112))
+test11 = data.frame(fb.validation.new$logConsumers,output11$fit, 1:length(output11$fit));
+colnames(test11)[1] = "logConsumers"
+colnames(test11)[2] = "Prediction"
+colnames(test11)[3] = "Index"
+png("validation_line_cat.png", width = 6, height = 4, units = 'in', res = 300)
+test11 %>% ggplot(aes(x = logConsumers, y = Prediction)) + geom_point() + geom_abline(intercept = 0, slope = 1) + ggtitle("Validation logConsumers vs Prediction")
+dev.off()
+
+# validation
 png("tv_line.png", width = 6, height = 4, units = 'in', res = 300)
-ggplot(data = test, aes(x = Index)) + geom_line(aes(y = Consumers, color = "Consumers")) + geom_line(aes(y = Prediction, color="Prediction"), linetype="twodash") + scale_color_manual(name = element_blank(), labels = c("Consumers","Prediction"), values = c("darkred", "steelblue")) + labs(y = "") + ggtitle("Validation")
+ggplot(data = test, aes(x = Index)) + geom_line(aes(y = logConsumers, color = "logConsumers")) + geom_line(aes(y = Prediction, color="Prediction"), linetype="twodash") + scale_color_manual(name = element_blank(), labels = c("logConsumers","Prediction"), values = c("darkred", "steelblue")) + labs(y = "") + ggtitle("Validation")
 dev.off()
 
 # zoom
 png("tv_line_zoom.png", width = 6, height = 4, units = 'in', res = 300)
-test2 = test[60:120,]
-ggplot(data = test2, aes(x = Index)) + geom_line(aes(y = Consumers, color = "Consumers")) + geom_line(aes(y = Prediction, color="Prediction"), linetype="twodash") + scale_color_manual(name = element_blank(), labels = c("Consumers","Prediction"), values = c("darkred", "steelblue")) + labs(y = "") +ggtitle("Validation Zoom")
+test2 = test[50:100,]
+ggplot(data = test2, aes(x = Index)) + geom_line(aes(y = logConsumers, color = "logConsumers")) + geom_line(aes(y = Prediction, color="Prediction"), linetype="twodash") + scale_color_manual(name = element_blank(), labels = c("logConsumers","Prediction"), values = c("darkred", "steelblue")) + labs(y = "") +ggtitle("Validation Zoom")
 dev.off()
 ```
 
