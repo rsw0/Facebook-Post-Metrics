@@ -31,6 +31,8 @@ suppressPackageStartupMessages(library(plotmo))
 suppressPackageStartupMessages(library(rcompanion))
 suppressPackageStartupMessages(library(car))
 suppressPackageStartupMessages(library(lmtest))
+suppressPackageStartupMessages(library(caret))
+suppressPackageStartupMessages(library(htmlTable))
 ```
 
 
@@ -51,20 +53,9 @@ fb.validation <- fb.random[249:495,]
 
 
 
-```{r IQR}
-png("boxplot_outlier.png", width = 6, height = 4, units = 'in', res = 300)
-fb.train %>% ggplot(aes("", Consumers)) + geom_point(alpha=0.2, position='jitter') + geom_boxplot(outlier.size=4, outlier.colour="blue", alpha=0.1)
-dev.off()
-
-IQR_outliers <- boxplot.stats(fb.train$Consumers, coef = 3)$out
-fb.clean <- fb.train %>% filter(!(Consumers %in% IQR_outliers))
-```
-
-
-
 ```{r transform_check}
 png("histo_pre_trans.png", width = 6, height = 4, units = 'in', res = 300)
-fb.clean %>% ggplot(aes(Consumers)) + geom_histogram()
+fb.train %>% ggplot(aes(Consumers)) + geom_histogram()
 dev.off()
 
 tukey_ladder <- function(){
@@ -89,15 +80,13 @@ dev.off()
 
 
 ```{r transform_power, eval=FALSE}
-this_best_lambda <- unname(transformTukey(fb.clean$Consumers, returnLambda = TRUE, quiet = TRUE, plotit = FALSE))[1]
+this_best_lambda <- unname(transformTukey(fb.train$Consumers, returnLambda = TRUE, quiet = TRUE, plotit = FALSE))[1]
 
 png("histo_post_trans.png", width = 6, height = 4, units = 'in', res = 300)
-fb.clean %>% ggplot(aes((Consumers)^this_best_lambda)) + geom_histogram()
+fb.train %>% ggplot(aes((Consumers)^this_best_lambda)) + geom_histogram()
 dev.off()
 
-fb.train <- fb.clean %>% mutate(logConsumers = (Consumers)^this_best_lambda) %>% select(Page_T_Likes:Paid, Consumers, logConsumers)
-
-fb.clean <- fb.clean %>% mutate(logConsumers = (Consumers)^this_best_lambda) %>% select(Page_T_Likes:Paid, Consumers, logConsumers)
+fb.train <- fb.train %>% mutate(logConsumers = (Consumers)^this_best_lambda) %>% select(Page_T_Likes:Paid, Consumers, logConsumers)
 
 fb.validation <- fb.validation %>% mutate(logConsumers = (Consumers)^this_best_lambda) %>% select(Page_T_Likes:Paid, Consumers, logConsumers)
 
@@ -107,13 +96,29 @@ fb <- fb %>% mutate(logConsumers = (Consumers)^this_best_lambda)
 
 
 ```{r transform_log}
-fb.train <- fb.clean %>% mutate(logConsumers = log10(Consumers)) %>% select(Page_T_Likes:Paid, Consumers, logConsumers)
+fb.random <- fb[sample(nrow(fb)),]
+fb.train <- fb.random[1:248,]
+fb.validation <- fb.random[249:495,]
+png("histo_post_trans.png", width = 6, height = 4, units = 'in', res = 300)
+fb.train %>% ggplot(aes(log10(Consumers))) + geom_histogram()
+dev.off()
 
-fb.clean <- fb.clean %>% mutate(logConsumers = log10(Consumers)) %>% select(Page_T_Likes:Paid, Consumers, logConsumers)
+fb.train <- fb.train %>% mutate(logConsumers = log10(Consumers)) %>% select(Page_T_Likes:Paid, Consumers, logConsumers)
 
 fb.validation <- fb.validation %>% mutate(logConsumers = log10(Consumers)) %>% select(Page_T_Likes:Paid, Consumers, logConsumers)
 
 fb <- fb %>% mutate(logConsumers = log10(Consumers))
+```
+
+
+
+```{r IQR}
+png("boxplot_outlier.png", width = 6, height = 4, units = 'in', res = 300)
+fb.train %>% ggplot(aes("", Consumers)) + geom_point(alpha=0.2, position='jitter') + geom_boxplot(outlier.size=4, outlier.colour="blue", alpha=0.1)
+dev.off()
+
+IQR_outliers <- boxplot.stats(fb.train$logConsumers, coef = 1.5)$out
+fb.clean <- fb.train %>% filter(!(logConsumers %in% IQR_outliers))
 ```
 
 
@@ -282,10 +287,10 @@ for (i in 1:200) {
 
 
 ```{r repeated_lasso_new_processing}
-lasso_200n_out <- lasso_200n[-1,] %>% count(feature) %>% mutate(Significance = ifelse(n>=140, "Significant", "Not Significant"))
+lasso_200n_out <- lasso_200n[-1,] %>% count(feature) %>% mutate(Significance = ifelse(n>=100, "Significant", "Not Significant"))
 
 png("lasso_select_new.png", width = 6, height = 4, units = 'in', res = 300)
-lasso_200n_out %>% ggplot(aes(feature, n, fill = Significance)) + geom_bar(stat="identity") + geom_abline(intercept = 140, slope = 0, color = "red") + labs(x = "Feature Identifier")
+lasso_200n_out %>% ggplot(aes(feature, n, fill = Significance)) + geom_bar(stat="identity") + geom_abline(intercept = 100, slope = 0, color = "red") + labs(x = "Feature Identifier")
 dev.off()
 ```
 
@@ -298,7 +303,6 @@ fb.train.new <- fb.clean %>% mutate(isStatus = ifelse(Type == "Status", 1, 0), i
 fb.validation.new <- fb.validation %>% mutate(isStatus = ifelse(Type == "Status", 1, 0), is1112 = ifelse(Month %in% c(11, 12), 1, 0)) %>% select(Page_T_Likes, isStatus, is1112, Consumers, logConsumers) %>% mutate(isStatus = as.factor(isStatus), is1112 = as.factor(is1112))
 
 m.mls_train <- lm(logConsumers ~ Page_T_Likes + isStatus + is1112, data = fb.train.new)
-
 tab_model(m.mls_train, show.se = TRUE, show.stat = TRUE, show.fstat = TRUE, show.intercept = TRUE, digits = 6)
 ```
 
@@ -306,43 +310,51 @@ tab_model(m.mls_train, show.se = TRUE, show.stat = TRUE, show.fstat = TRUE, show
 
 ```{r residual}
 m.mls_cat <- lm(logConsumers ~ isStatus + + is1112 -1, data = fb.train.new)
-StanResMLS2 <- rstandard(m.mls_cat)
-mfit2 = fitted(m.mls_cat)
+png("qq_cat.png", width = 6, height = 4, units = 'in', res = 300)
+plot(m.mls_cat, which=2, pch = 16)
+dev.off()
+png("sl_cat.png", width = 6, height = 4, units = 'in', res = 300)
+plot(m.mls_cat, which=3)
+dev.off()
 
+# qq train
+png("qq_train.png", width = 6, height = 4, units = 'in', res = 300)
+plot(m.mls_train, which=2, pch = 16)
+dev.off()
 
-plot(m.mls_train$fitted.values,  rstandard(f1))
-plot(m.mls_cat$fitted.values,  rstandard(f1))
+# scale location train
+png("sl_train.png", width = 6, height = 4, units = 'in', res = 300)
+plot(m.mls_train, which=3)
+dev.off()
 
-plot(m.mls_train)
-plot(m.mls_cat)
-leveragePlots(m.mls_train)
+# bp test
 bptest(m.mls_train)
 
-
-
 # histogram
+ResMLS_train <- resid(m.mls_train)
 StanResMLS1 <- rstandard(m.mls_train)
 mfit1 = fitted(m.mls_train)
 png("his30.png", width = 6, height = 4, units = 'in', res = 300)
 ggplot(data = data.frame(StanResMLS1), aes(x = StanResMLS1)) + geom_histogram(bins = 30) + labs(x = "Standardized Residuals") + ggtitle("Residual Histogram 30 bin")
 dev.off()
-
-
-
 ```
 
 
-```{r validation}
+
+```{r bptest_process}
+# the data below were obtained and recorded directly from code output in the previous step
+BP_Statistic <- c("BP", "df", "p-value")
+BP_Value = c(22.092, 3, 6.243e-05)
+bp_out <- tibble(BP_Statistic, BP_Value)
+bp_out %>% kbl(caption = "BP Output") %>% kable_classic(full_width = F, html_font = "Cambria")
+```
 
 
 
-# grab the useful information from previous code chunks, write a function to run the code n times and give a mean
-
-
+```{r cv}
 # residual for validation
 output <- predict(m.mls_train, se.fit = TRUE, newdata=data.frame(Page_T_Likes=fb.validation.new$Page_T_Likes, isStatus=fb.validation.new$isStatus, is1112=fb.validation.new$is1112))
 ResMLSValidation <- fb.validation.new$logConsumers - output$fit
-
 
 # MSE training
 mean((ResMLS_train)^2)
@@ -378,25 +390,73 @@ dev.off()
 
 # validation
 png("tv_line.png", width = 6, height = 4, units = 'in', res = 300)
-ggplot(data = test, aes(x = Index)) + geom_line(aes(y = logConsumers, color = "logConsumers")) + geom_line(aes(y = Prediction, color="Prediction"), linetype="twodash") + scale_color_manual(name = element_blank(), labels = c("logConsumers","Prediction"), values = c("darkred", "steelblue")) + labs(y = "") + ggtitle("Validation")
+ggplot(data = test, aes(x = Index)) + geom_line(aes(y = logConsumers, color = "logConsumers")) + geom_line(aes(y = Prediction, color="Prediction"), linetype="twodash") + geom_hline(yintercept = max(test$Prediction)) + geom_hline(yintercept = min(test$Prediction)) + annotate("rect", xmin=1, xmax=max(test$Index), ymin=min(test$Prediction), ymax=max(test$Prediction), alpha=0.05, fill="black") + scale_color_manual(name = element_blank(), labels = c("logConsumers","Prediction"), values = c("darkred", "steelblue")) + labs(y = "") + ggtitle("Validation")
 dev.off()
 
 # zoom
 png("tv_line_zoom.png", width = 6, height = 4, units = 'in', res = 300)
-test2 = test[50:100,]
+test2 = test[180:205,]
 ggplot(data = test2, aes(x = Index)) + geom_line(aes(y = logConsumers, color = "logConsumers")) + geom_line(aes(y = Prediction, color="Prediction"), linetype="twodash") + scale_color_manual(name = element_blank(), labels = c("logConsumers","Prediction"), values = c("darkred", "steelblue")) + labs(y = "") +ggtitle("Validation Zoom")
 dev.off()
+
 ```
 
-```{r MSEprocess, eval=FALSE}
+
+
+```{r cv_process}
 # the data below were obtained and recorded directly from code output in the previous step
-Trial_ID <- c("1", "2", "3", "4", "5", "6", "7", "Overall Mean")
-Validation_Response_Mean = c(809.6721, 779.7206, 784.5263, 767.0567, 784.3522, 796.4777, 748.834, 781.5199)
-MSE_Training <- c(273935.7, 398845.9, 360237.5, 454073.8, 383966.2, 370935.7, 375185, 373882.8)
-MSE_Validation <- c(495420.7, 420692.1, 776658.9, 307866.7, 368122.6, 755248.4, 384575.2, 501226.4)
-RMSE_Training <- c(523.3887, 631.5425, 600.1979, 673.85, 619.6501, 609.0449, 612.5235, 610.0282)
-RMSE_Validation <- c(703.8613, 648.6078, 881.2825, 554.8573, 606.7311, 869.0503, 620.1413, 697.7902)
-Relative_MSE <- c(0.3678892, 0.3584252, 0.520274, 0.2964047, 0.3123263, 0.4998025, 0.3414394, 0.385223)
-MSE_out <- tibble(Trial_ID, Validation_Response_Mean, MSE_Training, MSE_Validation, RMSE_Training, RMSE_Validation, Relative_MSE)
-MSE_out %>% kbl(caption = "MSE Output") %>% kable_classic(full_width = F, html_font = "Cambria")
+CV_Statistic <- c("MSE Training", "MSE Validation", "RMSE Training", "RMSE Validation", "Relative MSE")
+CV_Value = c(mean((ResMLS_train)^2), mean((ResMLSValidation)^2), sqrt(mean((ResMLS_train)^2)), sqrt(mean((ResMLSValidation)^2)), mean((ResMLSValidation)^2)/mean((fb.validation.new$logConsumers)^2))
+CV_out <- tibble(CV_Statistic, CV_Value)
+CV_out %>% kbl(caption = "CV Output") %>% kable_classic(full_width = F, html_font = "Cambria")
 ```
+
+
+
+```{r repeatedcv}
+fb <- fb %>% mutate(isStatus = ifelse(Type == "Status", 1, 0), is1112 = ifelse(Month %in% c(11, 12), 1, 0)) %>% mutate(isStatus = as.factor(isStatus), is1112 = as.factor(is1112))
+
+train_control <- trainControl(method = "repeatedcv", number = 2, repeats = 200) 
+
+repeated_cv_model <- train(logConsumers ~ Page_T_Likes + isStatus + is1112, data = fb, method = "lm", trControl = train_control) 
+
+repeated_cv_model
+```
+
+
+
+```{r repeatedcv_process}
+# the data below were obtained and recorded directly from code output in the previous step
+Error_Statistic <- c("Mean RMSE", "Mean MAE")
+Error_Value = c(0.3396814, 0.2324753)
+Error_out <- tibble(Error_Statistic, Error_Value)
+Error_out %>% kbl(caption = "Repeated CV Output") %>% kable_classic(full_width = F, html_font = "Cambria")
+```
+
+
+
+```{r count_type}
+count_type <- fb.train.new %>% count(isStatus, is1112) 
+count_type %>% kbl(caption = "Count Type Output") %>% kable_classic(full_width = F, html_font = "Cambria")
+```
+
+
+
+```{r back_transform}
+m.mls_notransform <- lm(Consumers ~ Page_T_Likes + isStatus + is1112, data = fb.train.new)
+
+original <- m.mls_notransform$fitted.values
+
+after_transformation <- log10(m.mls_train$fitted.values)
+
+back_transformation <- 10^m.mls_train$fitted.values
+
+fittedvalues <- tibble(original, after_transformation, back_transformation)
+
+fittedvalues <- fittedvalues %>% mutate(absolute_error = abs(original-back_transformation), percentage_error = absolute_error/original)
+
+backtrans_display <- head(fittedvalues)
+
+backtrans_display %>% kbl(caption = "Back Transformation Output") %>% kable_classic(full_width = F, html_font = "Cambria")
+```
+
