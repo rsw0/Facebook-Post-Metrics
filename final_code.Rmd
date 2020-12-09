@@ -59,9 +59,10 @@ fb.train %>% ggplot(aes(Consumers)) + geom_histogram()
 dev.off()
 
 tukey_ladder <- function(){
-  fb.random.r <- fb[sample(nrow(fb)),]
-  fb.train.r <- fb.random.r[1:248,]
-  fb.validation.r <- fb.random.r[249:495,]
+  fb.random.r <- fb.train[sample(nrow(fb.train)),]
+  # 90:10 split in repeated testing
+  fb.train.r <- fb.random.r[1:223,]
+
   ConsumersTrans = transformTukey(fb.train.r$Consumers, returnLambda = TRUE, quiet = TRUE, plotit = FALSE)
   unname(ConsumersTrans)[1]
 }
@@ -167,8 +168,9 @@ coef_names <- unlist(nonzero_coef@Dimnames[1])[-1]
 ```{r repeated_lasso_old}
 # mutate log Consumers in original dataset first
 single_lasso <- function(){
-  fb.random.r <- fb[sample(nrow(fb)),]
-  fb.train.r <- fb.random.r[1:248,]
+  fb.random.r <- fb.train[sample(nrow(fb.train)),]
+  # 90:10 split in repeated testing
+  fb.train.r <- fb.random.r[1:223,]
 
   xfactors.r <- model.matrix(fb.train.r$logConsumers ~ fb.train.r$Type + fb.train.r$Category + fb.train.r$Month + fb.train.r$Weekday + fb.train.r$Hour + fb.train.r$Paid)[, -1]
   x.r <- as.matrix(data.frame(fb.train.r$Page_T_Likes, xfactors.r))
@@ -261,8 +263,9 @@ coef_names1 <- unlist(nonzero_coef1@Dimnames[1])[-1]
 
 ```{r repeated_lasso_new}
 single_lasso1 <- function(){
-  fb.random.r <- fb[sample(nrow(fb)),]
-  fb.train.r <- fb.random.r[1:248,]
+  fb.random.r <- fb.train[sample(nrow(fb.train)),]
+  # 90:10 split in repeated testing
+  fb.train.r <- fb.random.r[1:223,]
 
   fb.lasso2 <- fb.train.r %>% mutate(isStatus = ifelse(Type == "Status", 1, 0), is1112 = ifelse(Month %in% c(11, 12), 1, 0)) %>% select(Page_T_Likes, isStatus, is1112, Consumers, logConsumers) %>% mutate(isStatus = as.factor(isStatus), is1112 = as.factor(is1112))
 
@@ -351,7 +354,7 @@ bp_out %>% kbl(caption = "BP Output") %>% kable_classic(full_width = F, html_fon
 
 
 
-```{r cv}
+```{r validation_curve}
 # residual for validation
 output <- predict(m.mls_train, se.fit = TRUE, newdata=data.frame(Page_T_Likes=fb.validation.new$Page_T_Likes, isStatus=fb.validation.new$isStatus, is1112=fb.validation.new$is1112))
 ResMLSValidation <- fb.validation.new$logConsumers - output$fit
@@ -405,20 +408,18 @@ dev.off()
 
 ```{r cv_process}
 # the data below were obtained and recorded directly from code output in the previous step
-CV_Statistic <- c("MSE Training", "MSE Validation", "RMSE Training", "RMSE Validation", "Relative MSE")
-CV_Value = c(mean((ResMLS_train)^2), mean((ResMLSValidation)^2), sqrt(mean((ResMLS_train)^2)), sqrt(mean((ResMLSValidation)^2)), mean((ResMLSValidation)^2)/mean((fb.validation.new$logConsumers)^2))
-CV_out <- tibble(CV_Statistic, CV_Value)
-CV_out %>% kbl(caption = "CV Output") %>% kable_classic(full_width = F, html_font = "Cambria")
+Error_Statistic <- c("MSE Training", "MSE Validation", "Root MSE Training", "Root MSE Validation", "Relative MSE")
+Error_Value = c(mean((ResMLS_train)^2), mean((ResMLSValidation)^2), sqrt(mean((ResMLS_train)^2)), sqrt(mean((ResMLSValidation)^2)), mean((ResMLSValidation)^2)/mean((fb.validation.new$logConsumers)^2))
+CV_out <- tibble(Error_Statistic, Error_Value)
+CV_out %>% kbl(caption = "Error Output") %>% kable_classic(full_width = F, html_font = "Cambria")
 ```
 
 
 
 ```{r repeatedcv}
-fb <- fb %>% mutate(isStatus = ifelse(Type == "Status", 1, 0), is1112 = ifelse(Month %in% c(11, 12), 1, 0)) %>% mutate(isStatus = as.factor(isStatus), is1112 = as.factor(is1112))
-
 train_control <- trainControl(method = "repeatedcv", number = 2, repeats = 200) 
 
-repeated_cv_model <- train(logConsumers ~ Page_T_Likes + isStatus + is1112, data = fb, method = "lm", trControl = train_control) 
+repeated_cv_model <- train(logConsumers ~ Page_T_Likes + isStatus + is1112, data = fb.train,new, method = "lm", trControl = train_control) 
 
 repeated_cv_model
 ```
@@ -427,9 +428,9 @@ repeated_cv_model
 
 ```{r repeatedcv_process}
 # the data below were obtained and recorded directly from code output in the previous step
-Error_Statistic <- c("Mean RMSE", "Mean MAE")
-Error_Value = c(0.3396814, 0.2324753)
-Error_out <- tibble(Error_Statistic, Error_Value)
+CV_Statistic <- c("Mean RMSE", "Mean MAE")
+CV_Value = c(0.3396814, 0.2324753)
+Error_out <- tibble(CV_Statistic, CV_Value)
 Error_out %>% kbl(caption = "Repeated CV Output") %>% kable_classic(full_width = F, html_font = "Cambria")
 ```
 
