@@ -104,11 +104,11 @@ png("histo_post_trans.png", width = 6, height = 4, units = 'in', res = 300)
 fb.train %>% ggplot(aes(log10(Consumers))) + geom_histogram()
 dev.off()
 
-fb.train <- fb.train %>% mutate(logConsumers = log10(Consumers)) %>% select(Page_T_Likes:Paid, Consumers, logConsumers)
+fb.train <- fb.train %>% mutate(logConsumers = log(Consumers)) %>% select(Page_T_Likes:Paid, Consumers, logConsumers)
 
-fb.validation <- fb.validation %>% mutate(logConsumers = log10(Consumers)) %>% select(Page_T_Likes:Paid, Consumers, logConsumers)
+fb.validation <- fb.validation %>% mutate(logConsumers = log(Consumers)) %>% select(Page_T_Likes:Paid, Consumers, logConsumers)
 
-fb <- fb %>% mutate(logConsumers = log10(Consumers))
+fb <- fb %>% mutate(logConsumers = log(Consumers))
 ```
 
 
