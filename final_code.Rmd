@@ -447,7 +447,7 @@ original <- m.mls_notransform$fitted.values
 
 after_transformation <- log10(m.mls_train$fitted.values)
 
-back_transformation <- 10^m.mls_train$fitted.values
+back_transformation <- exp(m.mls_train$fitted.values)
 
 fittedvalues <- tibble(original, after_transformation, back_transformation)
 
