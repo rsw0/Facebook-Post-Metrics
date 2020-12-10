@@ -98,7 +98,7 @@ fb <- fb %>% mutate(logConsumers = (Consumers)^this_best_lambda)
 
 ```{r transform_log}
 png("histo_post_trans.png", width = 6, height = 4, units = 'in', res = 300)
-fb.train %>% ggplot(aes(log10(Consumers))) + geom_histogram()
+fb.train %>% ggplot(aes(log(Consumers))) + geom_histogram()
 dev.off()
 
 fb.train <- fb.train %>% mutate(logConsumers = log(Consumers)) %>% select(Page_T_Likes:Paid, Consumers, logConsumers)
@@ -352,53 +352,35 @@ bp_out %>% kbl(caption = "BP Output") %>% kable_classic(full_width = F, html_fon
 
 
 ```{r validation_curve}
+in_sample <- predict(m.mls_train, se.fit = TRUE, newdata=data.frame(Page_T_Likes=fb.train.new$Page_T_Likes, isStatus=fb.train.new$isStatus, is1112=fb.train.new$is1112))
+###### IMPORTANT, REASSIGNING VALUES TO ResMLS_train, previously correspond to logConsumer residual in the residual code chunk
+ResMLS_train <- fb.train.new$Consumers - exp(in_sample$fit)*exp(var(in_sample$fit)/2)
+
 # residual for validation
 output <- predict(m.mls_train, se.fit = TRUE, newdata=data.frame(Page_T_Likes=fb.validation.new$Page_T_Likes, isStatus=fb.validation.new$isStatus, is1112=fb.validation.new$is1112))
-ResMLSValidation <- fb.validation.new$logConsumers - output$fit
-
-# MSE training
-mean((ResMLS_train)^2)
-# MSE validation
-mean((ResMLSValidation)^2)
-# relative MSE
-mean((ResMLSValidation)^2) / mean((fb.validation.new$logConsumers)^2)
-# RMSE training
-sqrt(mean((ResMLS_train)^2))
-# RMSE validation
-sqrt(mean((ResMLSValidation)^2))
+ResMLSValidation <- fb.validation.new$Consumers - exp(output$fit)*exp(var(output$fit)/2)
 
 # validation observation with predictions
-test = data.frame(fb.validation.new$logConsumers,output$fit, 1:length(output$fit));
-colnames(test)[1] = "logConsumers"
+test = data.frame(fb.validation.new$Consumers, exp(output$fit), 1:length(output$fit));
+colnames(test)[1] = "Consumers"
 colnames(test)[2] = "Prediction"
 colnames(test)[3] = "Index"
 
-# Consumers vs Prediction for validation dataset (full model)
-png("validation_line.png", width = 6, height = 4, units = 'in', res = 300)
-test %>% ggplot(aes(x = logConsumers, y = Prediction)) + geom_point() + geom_abline(intercept = 0, slope = 1) + ggtitle("Validation logConsumers vs Prediction")
-dev.off()
-
-# Consumers vs Prediction for validation dataset (categorical only)
-output11 <- predict(m.mls_cat, se.fit = TRUE, newdata=data.frame(isStatus=fb.validation.new$isStatus, is1112=fb.validation.new$is1112))
-test11 = data.frame(fb.validation.new$logConsumers,output11$fit, 1:length(output11$fit));
-colnames(test11)[1] = "logConsumers"
-colnames(test11)[2] = "Prediction"
-colnames(test11)[3] = "Index"
-png("validation_line_cat.png", width = 6, height = 4, units = 'in', res = 300)
-test11 %>% ggplot(aes(x = logConsumers, y = Prediction)) + geom_point() + geom_abline(intercept = 0, slope = 1) + ggtitle("Validation logConsumers vs Prediction")
-dev.off()
+quartile1 <- unname(quantile(fb.validation.new$Consumers)[2])
+quartile3 <- unname(quantile(fb.validation.new$Consumers)[4])
+validation_IQR <- quartile3 - quartile1
+upper_inner <- quartile3 + 1.5*validation_IQR
 
 # validation
 png("tv_line.png", width = 6, height = 4, units = 'in', res = 300)
-ggplot(data = test, aes(x = Index)) + geom_line(aes(y = logConsumers, color = "logConsumers")) + geom_line(aes(y = Prediction, color="Prediction"), linetype="twodash") + geom_hline(yintercept = max(test$Prediction)) + geom_hline(yintercept = min(test$Prediction)) + annotate("rect", xmin=1, xmax=max(test$Index), ymin=min(test$Prediction), ymax=max(test$Prediction), alpha=0.05, fill="black") + scale_color_manual(name = element_blank(), labels = c("logConsumers","Prediction"), values = c("darkred", "steelblue")) + labs(y = "") + ggtitle("Validation")
+ggplot(data = test, aes(x = Index)) + geom_line(aes(y = Consumers, color = "Consumers")) + geom_line(aes(y = Prediction, color="Prediction"), linetype="twodash") + geom_hline(yintercept = max(test$Prediction)) + geom_hline(yintercept = min(test$Prediction)) + geom_hline(yintercept = upper_inner, col = 'purple') + annotate("rect", xmin=1, xmax=max(test$Index), ymin=min(test$Prediction), ymax=max(test$Prediction), alpha=0.05, fill="black") + scale_color_manual(name = element_blank(), labels = c("Consumers","Prediction"), values = c("darkred", "steelblue")) + labs(y = "") + ggtitle("Validation")
 dev.off()
 
 # zoom
 png("tv_line_zoom.png", width = 6, height = 4, units = 'in', res = 300)
-test2 = test[180:205,]
-ggplot(data = test2, aes(x = Index)) + geom_line(aes(y = logConsumers, color = "logConsumers")) + geom_line(aes(y = Prediction, color="Prediction"), linetype="twodash") + scale_color_manual(name = element_blank(), labels = c("logConsumers","Prediction"), values = c("darkred", "steelblue")) + labs(y = "") +ggtitle("Validation Zoom")
+test2 = test[145:170,]
+ggplot(data = test2, aes(x = Index)) + geom_line(aes(y = Consumers, color = "Consumers")) + geom_line(aes(y = Prediction, color="Prediction"), linetype="twodash") + geom_hline(yintercept = upper_inner, col = 'purple') + scale_color_manual(name = element_blank(), labels = c("logConsumers","Prediction"), values = c("darkred", "steelblue")) + labs(y = "") +ggtitle("Validation Zoom")
 dev.off()
-
 ```
 
 
@@ -445,9 +427,9 @@ m.mls_notransform <- lm(Consumers ~ Page_T_Likes + isStatus + is1112, data = fb.
 
 original <- m.mls_notransform$fitted.values
 
-after_transformation <- log10(m.mls_train$fitted.values)
+after_transformation <- log(m.mls_train$fitted.values)
 
-back_transformation <- exp(m.mls_train$fitted.values)
+back_transformation <- exp(m.mls_train$fitted.values)*exp(var(m.mls_train$fitted.values)/2)
 
 fittedvalues <- tibble(original, after_transformation, back_transformation)
 
